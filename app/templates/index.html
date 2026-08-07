@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="澄川智慧供水运营平台第一轮演示">
+  <title>澄川智慧供水运营平台</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="主导航">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"><span></span></div>
+        <div><strong>澄川水务</strong><small>Smart Water OS</small></div>
+      </div>
+      <nav>
+        <a class="nav-item active" href="#overview"><span class="nav-icon">⌂</span><span>运营总览</span></a>
+        <a class="nav-item" href="#map"><span class="nav-icon">◇</span><span>一张图</span><em>Demo</em></a>
+        <a class="nav-item" href="#events"><span class="nav-icon">!</span><span>告警事件</span><b id="navAlertCount">3</b></a>
+        <a class="nav-item muted" href="#"><span class="nav-icon">≋</span><span>DMA 管理</span></a>
+        <a class="nav-item muted" href="#"><span class="nav-icon">↗</span><span>科学调度</span></a>
+        <a class="nav-item muted" href="#"><span class="nav-icon">◎</span><span>设备管理</span></a>
+      </nav>
+      <div class="sidebar-foot">
+        <span class="system-dot"></span>
+        <div><strong>平台运行正常</strong><small>数据更新于 <span id="sideUpdated">09:30</span></small></div>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <button class="mobile-menu" type="button" aria-label="展开导航">☰</button>
+        <div>
+          <div class="eyebrow">{{ iteration }} · 供水运营闭环</div>
+          <h1>早上好，运营调度中心</h1>
+        </div>
+        <div class="header-actions">
+          <div class="weather"><span>☀</span><div><strong>29°C</strong><small>晴 · 东南风 2 级</small></div></div>
+          <button class="icon-button" type="button" aria-label="消息通知">⌁<span></span></button>
+          <div class="avatar">调</div>
+        </div>
+      </header>
+
+      <section class="scope-bar" aria-label="数据范围">
+        <div class="scope-copy">
+          <span class="live-pill"><i></i> 实时监测</span>
+          <p><strong id="scopeName">全域供水</strong><span>今日 00:00 至当前</span></p>
+        </div>
+        <div class="scope-actions">
+          <label for="zoneSelect">查看范围</label>
+          <select id="zoneSelect" aria-label="选择 DMA 分区">
+            <option value="all">全部片区</option>
+            <option value="central">中心城区 DMA</option>
+            <option value="east">东城 DMA</option>
+            <option value="north">北城 DMA</option>
+            <option value="south">南城 DMA</option>
+          </select>
+          <button id="refreshButton" class="refresh-button" type="button">↻ 刷新</button>
+        </div>
+      </section>
+
+      <section id="overview" class="metric-grid" aria-label="核心运营指标">
+        <article class="metric-card primary">
+          <div class="metric-head"><span>今日供水量</span><i class="metric-symbol">水</i></div>
+          <div class="metric-value"><strong id="metricSupply">--</strong><span>万 m³</span></div>
+          <div class="metric-foot"><span class="trend up">↑ <b id="deltaSupply">--</b>%</span><small>较昨日同期</small></div>
+          <div class="spark-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        </article>
+        <article class="metric-card">
+          <div class="metric-head"><span>综合漏损率</span><i class="metric-symbol green">漏</i></div>
+          <div class="metric-value"><strong id="metricLeakage">--</strong><span>%</span></div>
+          <div class="metric-foot"><span class="trend down">↓ <b id="deltaLeakage">--</b>%</span><small>目标值 &lt; 9.0%</small></div>
+          <div class="progress-track"><i id="leakageProgress"></i></div>
+        </article>
+        <article class="metric-card">
+          <div class="metric-head"><span>管网平均压力</span><i class="metric-symbol violet">压</i></div>
+          <div class="metric-value"><strong id="metricPressure">--</strong><span>MPa</span></div>
+          <div class="metric-foot"><span class="trend steady">● 稳定</span><small>合格区间 0.25–0.45</small></div>
+          <div class="pressure-scale"><i id="pressureMarker"></i></div>
+        </article>
+        <article class="metric-card alert-card">
+          <div class="metric-head"><span>当前活动告警</span><i class="metric-symbol orange">警</i></div>
+          <div class="metric-value"><strong id="metricAlarms">--</strong><span>条</span></div>
+          <div class="metric-foot"><span class="trend alert">高优先级 <b>1</b></span><a href="#events">立即处置 →</a></div>
+          <div class="alarm-dots" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+        </article>
+      </section>
+
+      <section class="dashboard-grid">
+        <article id="map" class="panel map-panel">
+          <div class="panel-heading">
+            <div><span class="section-kicker">NETWORK OVERVIEW</span><h2>供水管网运行一张图</h2></div>
+            <div class="legend"><span><i class="healthy"></i>正常</span><span><i class="warning"></i>关注</span><span><i class="alert"></i>告警</span></div>
+          </div>
+          <div class="network-map" aria-label="DMA 分区示意图">
+            <div class="map-grid" aria-hidden="true"></div>
+            <div class="river river-one" aria-hidden="true"></div>
+            <div class="river river-two" aria-hidden="true"></div>
+            <div class="pipe pipe-one" aria-hidden="true"></div>
+            <div class="pipe pipe-two" aria-hidden="true"></div>
+            <div class="pipe pipe-three" aria-hidden="true"></div>
+            <button class="zone-node central" data-zone="central" type="button"><i></i><span>中心城区</span><small>运行平稳</small></button>
+            <button class="zone-node east alert" data-zone="east" type="button"><i></i><span>东城片区</span><small>漏损偏高</small></button>
+            <button class="zone-node north warning" data-zone="north" type="button"><i></i><span>北城片区</span><small>设备离线</small></button>
+            <button class="zone-node south warning" data-zone="south" type="button"><i></i><span>南城片区</span><small>工单处理中</small></button>
+            <div class="water-plant"><span>净</span><div>第一水厂<small>出厂压力 0.41 MPa</small></div></div>
+            <div class="map-controls"><button type="button" aria-label="放大">+</button><button type="button" aria-label="缩小">−</button></div>
+            <div class="map-summary"><strong id="onlineRate">--%</strong><span>监测点在线率</span><small>428 / 434 个监测点</small></div>
+          </div>
+        </article>
+
+        <article class="panel trend-panel">
+          <div class="panel-heading">
+            <div><span class="section-kicker">24H TREND</span><h2>流量与压力趋势</h2></div>
+            <div class="chart-toggle" role="group" aria-label="趋势类型">
+              <button class="active" type="button" data-series="flow">流量</button>
+              <button type="button" data-series="pressure">压力</button>
+            </div>
+          </div>
+          <div class="chart-summary"><strong id="trendLatest">--</strong><span id="trendUnit">m³/h</span><small id="trendCaption">当前瞬时流量</small></div>
+          <div class="chart-wrap"><canvas id="trendChart" role="img" aria-label="24 小时流量趋势图"></canvas></div>
+          <div class="chart-note"><span><i></i> 智能基线</span><p id="trendInsight">正在载入趋势洞察…</p></div>
+        </article>
+      </section>
+
+      <section id="events" class="panel event-panel">
+        <div class="panel-heading">
+          <div><span class="section-kicker">EVENT WORKBENCH</span><h2>告警事件工作台</h2></div>
+          <div class="event-stats"><span>待确认 <b id="pendingCount">--</b></span><span>处理中 <b id="processingCount">--</b></span><span>已关闭 <b id="resolvedCount">--</b></span></div>
+        </div>
+        <div class="event-layout">
+          <div class="event-list" id="eventList" aria-live="polite"></div>
+          <aside class="event-detail" id="eventDetail">
+            <div class="empty-state"><span>↳</span><strong>选择一条事件</strong><p>查看异常原因、位置与建议处置动作</p></div>
+          </aside>
+        </div>
+      </section>
+
+      <footer><span>澄川智慧供水运营平台 · 演示数据</span><span>版本 {{ version }} · {{ iteration }}</span></footer>
+    </main>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="{{ url_for('static', path='/app.js') }}" defer></script>
+</body>
+</html>
