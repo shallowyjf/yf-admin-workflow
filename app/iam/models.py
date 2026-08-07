@@ -1,4 +1,4 @@
-"""I02 IAM persistence model.
+"""IAM and authorization persistence models.
 
 Roles and positions deliberately bind to UserOrganization rather than User.
 """
@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     DateTime,
     ForeignKey,
@@ -96,6 +97,75 @@ class Role(IdTimestampMixin, Base):
     membership_links: Mapped[list[UserOrganizationRole]] = relationship(
         back_populates="role"
     )
+    permission_links: Mapped[list[RolePermission]] = relationship(
+        back_populates="role",
+        cascade="all, delete-orphan",
+    )
+    data_scopes: Mapped[list[RoleDataScope]] = relationship(
+        back_populates="role",
+        cascade="all, delete-orphan",
+    )
+
+
+class Permission(IdTimestampMixin, Base):
+    __tablename__ = "sys_permission"
+
+    permission_code: Mapped[str] = mapped_column(
+        String(120), unique=True, nullable=False
+    )
+    permission_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    resource_type: Mapped[str | None] = mapped_column(String(40))
+    description: Mapped[str | None] = mapped_column(String)
+
+    role_links: Mapped[list[RolePermission]] = relationship(
+        back_populates="permission",
+        cascade="all, delete-orphan",
+    )
+
+
+class RolePermission(IdTimestampMixin, Base):
+    __tablename__ = "sys_role_permission"
+    __table_args__ = (
+        UniqueConstraint(
+            "role_id",
+            "permission_id",
+            name="uq_sys_role_permission_role_permission",
+        ),
+        Index("ix_sys_role_permission_permission_id", "permission_id"),
+    )
+
+    role_id: Mapped[int] = mapped_column(
+        ForeignKey("sys_role.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    permission_id: Mapped[int] = mapped_column(
+        ForeignKey("sys_permission.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    role: Mapped[Role] = relationship(back_populates="permission_links")
+    permission: Mapped[Permission] = relationship(back_populates="role_links")
+
+
+class RoleDataScope(IdTimestampMixin, Base):
+    __tablename__ = "sys_role_data_scope"
+    __table_args__ = (
+        UniqueConstraint(
+            "role_id",
+            "permission_code",
+            name="uq_sys_role_data_scope_role_permission",
+        ),
+    )
+
+    role_id: Mapped[int] = mapped_column(
+        ForeignKey("sys_role.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    permission_code: Mapped[str] = mapped_column(String(120), nullable=False)
+    scope_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    scope_config: Mapped[dict | None] = mapped_column(JSON)
+
+    role: Mapped[Role] = relationship(back_populates="data_scopes")
 
 
 class Position(IdTimestampMixin, Base):

@@ -5,10 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from .authorization import DataScopeType
 from .models import (
     Organization,
+    Permission,
     Position,
     Role,
+    RoleDataScope,
+    RolePermission,
     User,
     UserOrganization,
     UserOrganizationPosition,
@@ -26,7 +30,7 @@ class IAMEntityNotFound(IAMError):
 
 
 class DuplicateIAMRelation(IAMError):
-    """Raised when a membership, role or position link already exists."""
+    """Raised when an IAM relationship already exists."""
 
 
 class DuplicateIAMCode(IAMError):
@@ -105,6 +109,24 @@ class IAMService:
             Position(position_code=position_code, position_name=position_name)
         )
 
+    def create_permission(
+        self,
+        permission_code: str,
+        permission_name: str,
+        resource_type: str | None = None,
+        description: str | None = None,
+    ) -> Permission:
+        if self.repository.get_permission_by_code(permission_code):
+            raise DuplicateIAMCode(f"permission already exists: {permission_code}")
+        return self._save(
+            Permission(
+                permission_code=permission_code,
+                permission_name=permission_name,
+                resource_type=resource_type,
+                description=description,
+            )
+        )
+
     def add_user_to_organization(
         self,
         username: str,
@@ -152,6 +174,54 @@ class IAMService:
             )
         )
 
+    def grant_permission(
+        self,
+        role_code: str,
+        permission_code: str,
+    ) -> RolePermission:
+        role = self._require_role(role_code)
+        permission = self._require_permission(permission_code)
+        if self.repository.get_role_permission(role.id, permission.id):
+            raise DuplicateIAMRelation(
+                f"permission grant already exists: {role_code}/{permission_code}"
+            )
+        return self._save(
+            RolePermission(role_id=role.id, permission_id=permission.id)
+        )
+
+    def set_role_data_scope(
+        self,
+        role_code: str,
+        permission_code: str,
+        scope_type: DataScopeType | str,
+        *,
+        custom_org_codes: tuple[str, ...] = (),
+    ) -> RoleDataScope:
+        role = self._require_role(role_code)
+        self._require_permission(permission_code)
+        normalized_scope = DataScopeType(scope_type)
+        scope_config = None
+        if normalized_scope is DataScopeType.CUSTOM:
+            scope_config = {
+                "org_ids": [
+                    self._require_organization(org_code).id
+                    for org_code in custom_org_codes
+                ]
+            }
+
+        scope = self.repository.get_role_data_scope(role.id, permission_code)
+        if scope is None:
+            scope = RoleDataScope(
+                role_id=role.id,
+                permission_code=permission_code,
+            )
+            self.repository.add(scope)
+        scope.scope_type = normalized_scope.value
+        scope.scope_config = scope_config
+        self.repository.commit()
+        self.repository.refresh(scope)
+        return scope
+
     def organization_tree(self) -> list[OrganizationTreeNode]:
         organizations = self.repository.list_organizations()
         nodes = {
@@ -178,6 +248,9 @@ class IAMService:
 
     def get_position(self, position_code: str) -> Position | None:
         return self.repository.get_position_by_code(position_code)
+
+    def get_permission(self, permission_code: str) -> Permission | None:
+        return self.repository.get_permission_by_code(permission_code)
 
     def get_membership(
         self, username: str, org_code: str
@@ -211,6 +284,12 @@ class IAMService:
         if position is None:
             raise IAMEntityNotFound(f"position not found: {position_code}")
         return position
+
+    def _require_permission(self, permission_code: str) -> Permission:
+        permission = self.get_permission(permission_code)
+        if permission is None:
+            raise IAMEntityNotFound(f"permission not found: {permission_code}")
+        return permission
 
     def _require_membership(self, username: str, org_code: str) -> UserOrganization:
         membership = self.get_membership(username, org_code)

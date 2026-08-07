@@ -1,6 +1,6 @@
 # 统一权限与流程工单平台 Python Demo
 
-这是正式系统前的可运行架构原型，用于逐轮验证 IAM、CandidateResolver、WorkflowTask 与 WorkOrder 的领域边界。当前代码完成 **I02：IAM 基础模型**，尚未实现 Permission、登录或流程工单。
+这是正式系统前的可运行架构原型，用于逐轮验证 IAM、功能权限、数据范围、CandidateResolver、WorkflowTask 与 WorkOrder 的领域边界。当前代码完成 **I03：功能权限与数据范围**，尚未实现登录、候选人解析或流程工单。
 
 ## 环境
 
@@ -35,12 +35,13 @@ Copy-Item .env.example .env
 ## 回归测试与质量检查
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest
+.\.venv\Scripts\python.exe -m pytest -W error
 .\.venv\Scripts\python.exe -m ruff check app tests migrations
+.\.venv\Scripts\python.exe -m alembic check
 ```
 
 ## 当前边界
 
-I02 已实现 User、Organization、Role、Position、UserOrganization，以及组织内角色和岗位关系。角色与岗位只能通过 UserOrganization 绑定，User 模型不存在 `org_id` 或 `role_id`。Permission、DataScope、登录、候选人、流程和工单将在后续迭代实现。
+I03 已实现 Permission、RolePermission、RoleDataScope 与 `PermissionService`。角色仍只通过 UserOrganization 绑定；功能权限、数据范围和未来的流程任务处理权是三套独立判定。DataScope 返回结构化 `WorkOrderScopeFilter`，不在 Service 内拼 SQL。
 
-设计约束见 `AI_CODING_RULES.md`，本轮验收见 `docs/iterations/I02.md`。
+登录、活动组织令牌上下文、CandidateResolver、流程任务和工单将在后续迭代实现。设计约束见 `AI_CODING_RULES.md`，本轮验收见 `docs/iterations/I03.md`。

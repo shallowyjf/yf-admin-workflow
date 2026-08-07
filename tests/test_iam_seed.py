@@ -1,7 +1,15 @@
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.iam.models import Organization, Position, Role, User
+from app.iam.models import (
+    Organization,
+    Permission,
+    Position,
+    Role,
+    RoleDataScope,
+    RolePermission,
+    User,
+)
 from app.iam.repository import IAMRepository
 from app.iam.seed import seed_iam
 from app.iam.service import IAMService
@@ -19,6 +27,9 @@ def test_seed_is_idempotent_and_creates_required_relationships(
     assert db_session.scalar(select(func.count()).select_from(User)) == 5
     assert db_session.scalar(select(func.count()).select_from(Role)) == 5
     assert db_session.scalar(select(func.count()).select_from(Position)) == 3
+    assert db_session.scalar(select(func.count()).select_from(Permission)) == 8
+    assert db_session.scalar(select(func.count()).select_from(RolePermission)) == 25
+    assert db_session.scalar(select(func.count()).select_from(RoleDataScope)) == 25
 
     repairers = set()
     for username in ("lisi", "zhaoliu"):
@@ -33,3 +44,7 @@ def test_seed_is_idempotent_and_creates_required_relationships(
     assert {link.position.position_code for link in manager.position_links} == {
         "DEPT_MANAGER"
     }
+
+    repairer_role = service.get_role("REPAIRER")
+    assert repairer_role is not None
+    assert {scope.scope_type for scope in repairer_role.data_scopes} == {"SELF"}

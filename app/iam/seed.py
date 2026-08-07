@@ -1,10 +1,11 @@
-"""Idempotent I02 seed data."""
+"""Idempotent IAM and authorization demo seed data."""
 
 from dataclasses import dataclass
 
 from app.core.config import get_settings
 from app.db.session import Database
 
+from .authorization import DataScopeType
 from .repository import IAMRepository
 from .service import IAMService
 
@@ -34,6 +35,55 @@ POSITIONS = (
     ("DISPATCHER", "调度员"),
     ("REPAIRER", "抢修人员"),
 )
+PERMISSIONS = (
+    ("workorder:view", "查看工单", "WORKORDER"),
+    ("workorder:create", "创建工单", "WORKORDER"),
+    ("workorder:dispatch", "派单", "WORKORDER"),
+    ("workorder:claim", "认领工单", "WORKORDER"),
+    ("workorder:handle", "处理工单", "WORKORDER"),
+    ("workorder:transfer", "转派工单", "WORKORDER"),
+    ("workorder:review", "复核工单", "WORKORDER"),
+    ("workorder:close", "关闭工单", "WORKORDER"),
+)
+ROLE_POLICIES = {
+    "SYSTEM_ADMIN": (
+        tuple(code for code, _, _ in PERMISSIONS),
+        DataScopeType.ALL,
+    ),
+    "DISPATCHER": (
+        (
+            "workorder:view",
+            "workorder:create",
+            "workorder:dispatch",
+            "workorder:review",
+            "workorder:close",
+        ),
+        DataScopeType.ORG_AND_CHILD,
+    ),
+    "WORKORDER_MANAGER": (
+        (
+            "workorder:view",
+            "workorder:create",
+            "workorder:dispatch",
+            "workorder:transfer",
+            "workorder:close",
+        ),
+        DataScopeType.ORG_AND_CHILD,
+    ),
+    "REPAIRER": (
+        (
+            "workorder:view",
+            "workorder:claim",
+            "workorder:handle",
+            "workorder:transfer",
+        ),
+        DataScopeType.SELF,
+    ),
+    "REVIEWER": (
+        ("workorder:view", "workorder:review", "workorder:close"),
+        DataScopeType.ORG,
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -42,6 +92,9 @@ class SeedSummary:
     users: int = 5
     roles: int = 5
     positions: int = 3
+    permissions: int = 8
+    role_permissions: int = 25
+    data_scopes: int = 25
 
 
 def seed_iam(service: IAMService) -> SeedSummary:
@@ -60,6 +113,10 @@ def seed_iam(service: IAMService) -> SeedSummary:
     for code, name in POSITIONS:
         if service.get_position(code) is None:
             service.create_position(code, name)
+
+    for code, name, resource_type in PERMISSIONS:
+        if service.get_permission(code) is None:
+            service.create_permission(code, name, resource_type)
 
     assignments = (
         ("admin", "GROUP", ("SYSTEM_ADMIN",), ()),
@@ -89,6 +146,16 @@ def seed_iam(service: IAMService) -> SeedSummary:
             if position_code not in current_positions:
                 service.assign_position(username, org_code, position_code)
 
+    for role_code, (permission_codes, scope_type) in ROLE_POLICIES.items():
+        role = service.get_role(role_code)
+        assert role is not None
+        for permission_code in permission_codes:
+            permission = service.get_permission(permission_code)
+            assert permission is not None
+            if service.repository.get_role_permission(role.id, permission.id) is None:
+                service.grant_permission(role_code, permission_code)
+            service.set_role_data_scope(role_code, permission_code, scope_type)
+
     return SeedSummary()
 
 
@@ -100,7 +167,8 @@ def main() -> None:
         print(
             "IAM seed ready: "
             f"{summary.organizations} organizations, {summary.users} users, "
-            f"{summary.roles} roles, {summary.positions} positions"
+            f"{summary.roles} roles, {summary.positions} positions, "
+            f"{summary.permissions} permissions"
         )
     finally:
         database.dispose()

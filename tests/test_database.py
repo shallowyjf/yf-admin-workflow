@@ -7,11 +7,14 @@ from sqlalchemy import create_engine, inspect
 from app.db.base import Base
 
 
-def test_shared_declarative_base_contains_only_i02_iam_tables() -> None:
+def test_shared_declarative_base_contains_i03_authorization_tables() -> None:
     assert set(Base.metadata.tables) == {
         "sys_org",
+        "sys_permission",
         "sys_position",
         "sys_role",
+        "sys_role_data_scope",
+        "sys_role_permission",
         "sys_user",
         "sys_user_org",
         "sys_user_org_position",
@@ -42,7 +45,7 @@ def test_i02_migration_creates_and_removes_iam_tables(tmp_path: Path) -> None:
     config = Config("alembic.ini")
     config.set_main_option("sqlalchemy.url", database_url)
 
-    command.upgrade(config, "head")
+    command.upgrade(config, "0002_i02")
     engine = create_engine(database_url)
     table_names = set(inspect(engine).get_table_names())
     assert table_names == {
@@ -58,4 +61,30 @@ def test_i02_migration_creates_and_removes_iam_tables(tmp_path: Path) -> None:
 
     command.downgrade(config, "0001_i01")
     assert inspect(engine).get_table_names() == ["alembic_version"]
+    engine.dispose()
+
+
+def test_i03_migration_creates_and_removes_authorization_tables(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "i03.db"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    config = Config("alembic.ini")
+    config.set_main_option("sqlalchemy.url", database_url)
+
+    command.upgrade(config, "head")
+    engine = create_engine(database_url)
+    table_names = set(inspect(engine).get_table_names())
+    assert {
+        "sys_permission",
+        "sys_role_data_scope",
+        "sys_role_permission",
+    } <= table_names
+
+    command.downgrade(config, "0002_i02")
+    assert not {
+        "sys_permission",
+        "sys_role_data_scope",
+        "sys_role_permission",
+    } & set(inspect(engine).get_table_names())
     engine.dispose()
