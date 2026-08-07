@@ -47,6 +47,16 @@ class PermissionService:
             )
         )
 
+    def effective_permissions(
+        self,
+        user_id: int,
+        active_org_id: int,
+    ) -> set[str]:
+        return self.repository.list_effective_permission_codes(
+            user_id,
+            active_org_id,
+        )
+
     def work_order_scope(
         self,
         user_id: int,

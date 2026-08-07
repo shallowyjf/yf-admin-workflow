@@ -142,6 +142,34 @@ class IAMRepository:
         )
         return list(self.session.scalars(statement))
 
+    def list_effective_permission_codes(
+        self,
+        user_id: int,
+        active_org_id: int,
+    ) -> set[str]:
+        statement = (
+            select(Permission.permission_code)
+            .join(RolePermission, RolePermission.permission_id == Permission.id)
+            .join(Role, Role.id == RolePermission.role_id)
+            .join(UserOrganizationRole, UserOrganizationRole.role_id == Role.id)
+            .join(
+                UserOrganization,
+                UserOrganization.id == UserOrganizationRole.user_org_id,
+            )
+            .join(User, User.id == UserOrganization.user_id)
+            .join(Organization, Organization.id == UserOrganization.org_id)
+            .where(
+                User.id == user_id,
+                User.is_active.is_(True),
+                UserOrganization.org_id == active_org_id,
+                UserOrganization.is_active.is_(True),
+                Organization.is_active.is_(True),
+                Role.is_active.is_(True),
+            )
+            .distinct()
+        )
+        return set(self.session.scalars(statement))
+
     def list_role_data_scopes(
         self,
         role_ids: list[int],

@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.auth.router import router as auth_router
 from app.core.config import Settings, get_settings
 from app.db.session import Database
 from app.system.repository import HealthRepository
@@ -38,6 +39,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     application.include_router(system_router)
+    application.include_router(auth_router)
     return application
 
 

@@ -1,6 +1,6 @@
 # 统一权限与流程工单平台 Python Demo
 
-这是正式系统前的可运行架构原型，用于逐轮验证 IAM、功能权限、数据范围、CandidateResolver、WorkflowTask 与 WorkOrder 的领域边界。当前代码完成 **I03：功能权限与数据范围**，尚未实现登录、候选人解析或流程工单。
+这是正式系统前的可运行架构原型，用于逐轮验证 IAM、功能权限、数据范围、CandidateResolver、WorkflowTask 与 WorkOrder 的领域边界。当前代码完成 **I04：登录与 RequestContext**，尚未实现候选人解析或流程工单。
 
 ## 环境
 
@@ -42,6 +42,6 @@ Copy-Item .env.example .env
 
 ## 当前边界
 
-I03 已实现 Permission、RolePermission、RoleDataScope 与 `PermissionService`。角色仍只通过 UserOrganization 绑定；功能权限、数据范围和未来的流程任务处理权是三套独立判定。DataScope 返回结构化 `WorkOrderScopeFilter`，不在 Service 内拼 SQL。
+I04 已实现安全密码哈希、数据库端 Session、HttpOnly Cookie、`RequestContext`、当前用户查询与活动组织切换。角色仍只通过 UserOrganization 绑定；切换组织后角色与权限会从数据库重新计算，不写入 Cookie。
 
-登录、活动组织令牌上下文、CandidateResolver、流程任务和工单将在后续迭代实现。设计约束见 `AI_CODING_RULES.md`，本轮验收见 `docs/iterations/I03.md`。
+Demo 用户为 `admin`、`wangwu`、`zhangsan`、`lisi`、`zhaoliu`，初始密码统一为 `Demo@123456`，仅限本地演示。CandidateResolver、流程任务和工单将在后续迭代实现。设计约束见 `AI_CODING_RULES.md`，本轮验收见 `docs/iterations/I04.md`。

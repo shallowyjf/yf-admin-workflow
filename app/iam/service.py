@@ -66,6 +66,13 @@ class IAMService:
         )
         return self._save(user)
 
+    def set_password_hash(self, username: str, password_hash: str) -> User:
+        user = self._require_user(username)
+        user.password_hash = password_hash
+        self.repository.commit()
+        self.repository.refresh(user)
+        return user
+
     def create_organization(
         self,
         org_code: str,

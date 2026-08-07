@@ -1,6 +1,7 @@
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.auth.security import PasswordHasher
 from app.iam.models import (
     Organization,
     Permission,
@@ -11,7 +12,7 @@ from app.iam.models import (
     User,
 )
 from app.iam.repository import IAMRepository
-from app.iam.seed import seed_iam
+from app.iam.seed import DEMO_INITIAL_PASSWORD, seed_iam
 from app.iam.service import IAMService
 
 
@@ -48,3 +49,13 @@ def test_seed_is_idempotent_and_creates_required_relationships(
     repairer_role = service.get_role("REPAIRER")
     assert repairer_role is not None
     assert {scope.scope_type for scope in repairer_role.data_scopes} == {"SELF"}
+
+    wangwu_secondary = service.get_membership("wangwu", "PIPE_OPERATION")
+    assert wangwu_secondary is not None
+    assert not wangwu_secondary.is_primary
+    assert wangwu_secondary.role_links == []
+
+    wangwu = service.get_user("wangwu")
+    assert wangwu is not None
+    assert wangwu.password_hash != DEMO_INITIAL_PASSWORD
+    assert PasswordHasher().verify(DEMO_INITIAL_PASSWORD, wangwu.password_hash)

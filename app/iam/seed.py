@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 
+from app.auth.security import PasswordHasher
 from app.core.config import get_settings
 from app.db.session import Database
 
@@ -35,6 +36,7 @@ POSITIONS = (
     ("DISPATCHER", "调度员"),
     ("REPAIRER", "抢修人员"),
 )
+DEMO_INITIAL_PASSWORD = "Demo@123456"
 PERMISSIONS = (
     ("workorder:view", "查看工单", "WORKORDER"),
     ("workorder:create", "创建工单", "WORKORDER"),
@@ -98,13 +100,24 @@ class SeedSummary:
 
 
 def seed_iam(service: IAMService) -> SeedSummary:
+    password_hasher = PasswordHasher()
     for code, name, org_type, parent_code, sort_no in ORGANIZATIONS:
         if service.get_organization(code) is None:
             service.create_organization(code, name, org_type, parent_code, sort_no)
 
     for username, display_name in USERS:
-        if service.get_user(username) is None:
-            service.create_user(username, display_name, "!login-disabled-until-I04")
+        user = service.get_user(username)
+        if user is None:
+            service.create_user(
+                username,
+                display_name,
+                password_hasher.hash(DEMO_INITIAL_PASSWORD),
+            )
+        elif user.password_hash == "!login-disabled-until-I04":
+            service.set_password_hash(
+                username,
+                password_hasher.hash(DEMO_INITIAL_PASSWORD),
+            )
 
     for code, name in ROLES:
         if service.get_role(code) is None:
@@ -145,6 +158,9 @@ def seed_iam(service: IAMService) -> SeedSummary:
         for position_code in position_codes:
             if position_code not in current_positions:
                 service.assign_position(username, org_code, position_code)
+
+    if service.get_membership("wangwu", "PIPE_OPERATION") is None:
+        service.add_user_to_organization("wangwu", "PIPE_OPERATION")
 
     for role_code, (permission_codes, scope_type) in ROLE_POLICIES.items():
         role = service.get_role(role_code)

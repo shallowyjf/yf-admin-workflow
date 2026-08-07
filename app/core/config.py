@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     environment: str = "development"
     debug: bool = False
     database_url: str = "sqlite:///./var/demo.db"
+    auth_cookie_name: str = "yf_session"
+    auth_cookie_secure: bool = False
+    auth_session_hours: int = 8
 
     model_config = SettingsConfigDict(
         env_file=".env",

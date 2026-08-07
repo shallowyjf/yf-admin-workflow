@@ -9,6 +9,7 @@ from app.db.base import Base
 
 def test_shared_declarative_base_contains_i03_authorization_tables() -> None:
     assert set(Base.metadata.tables) == {
+        "sys_auth_session",
         "sys_org",
         "sys_permission",
         "sys_position",
@@ -72,7 +73,7 @@ def test_i03_migration_creates_and_removes_authorization_tables(
     config = Config("alembic.ini")
     config.set_main_option("sqlalchemy.url", database_url)
 
-    command.upgrade(config, "head")
+    command.upgrade(config, "0003_i03")
     engine = create_engine(database_url)
     table_names = set(inspect(engine).get_table_names())
     assert {
@@ -87,4 +88,21 @@ def test_i03_migration_creates_and_removes_authorization_tables(
         "sys_role_data_scope",
         "sys_role_permission",
     } & set(inspect(engine).get_table_names())
+    engine.dispose()
+
+
+def test_i04_migration_creates_and_removes_auth_session_table(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "i04.db"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    config = Config("alembic.ini")
+    config.set_main_option("sqlalchemy.url", database_url)
+
+    command.upgrade(config, "head")
+    engine = create_engine(database_url)
+    assert "sys_auth_session" in inspect(engine).get_table_names()
+
+    command.downgrade(config, "0003_i03")
+    assert "sys_auth_session" not in inspect(engine).get_table_names()
     engine.dispose()
