@@ -203,6 +203,93 @@ class IAMRepository:
             )
         )
 
+    def get_active_user_id(self, user_id: int) -> int | None:
+        return self.session.scalar(
+            select(User.id).where(User.id == user_id, User.is_active.is_(True))
+        )
+
+    def list_active_user_ids_by_organization(self, org_id: int) -> set[int]:
+        return set(
+            self.session.scalars(
+                select(User.id)
+                .join(UserOrganization, UserOrganization.user_id == User.id)
+                .join(Organization, Organization.id == UserOrganization.org_id)
+                .where(
+                    User.is_active.is_(True),
+                    UserOrganization.is_active.is_(True),
+                    Organization.is_active.is_(True),
+                    Organization.id == org_id,
+                )
+                .distinct()
+            )
+        )
+
+    def list_active_user_ids_by_role(
+        self,
+        role_code: str,
+        org_id: int | None = None,
+    ) -> set[int]:
+        statement = (
+            select(User.id)
+            .join(UserOrganization, UserOrganization.user_id == User.id)
+            .join(Organization, Organization.id == UserOrganization.org_id)
+            .join(
+                UserOrganizationRole,
+                UserOrganizationRole.user_org_id == UserOrganization.id,
+            )
+            .join(Role, Role.id == UserOrganizationRole.role_id)
+            .where(
+                User.is_active.is_(True),
+                UserOrganization.is_active.is_(True),
+                Organization.is_active.is_(True),
+                Role.is_active.is_(True),
+                Role.role_code == role_code,
+            )
+            .distinct()
+        )
+        if org_id is not None:
+            statement = statement.where(Organization.id == org_id)
+        return set(self.session.scalars(statement))
+
+    def list_active_user_ids_by_position(
+        self,
+        position_code: str,
+        org_id: int,
+    ) -> set[int]:
+        statement = (
+            select(User.id)
+            .join(UserOrganization, UserOrganization.user_id == User.id)
+            .join(Organization, Organization.id == UserOrganization.org_id)
+            .join(
+                UserOrganizationPosition,
+                UserOrganizationPosition.user_org_id == UserOrganization.id,
+            )
+            .join(Position, Position.id == UserOrganizationPosition.position_id)
+            .where(
+                User.is_active.is_(True),
+                UserOrganization.is_active.is_(True),
+                Organization.is_active.is_(True),
+                Position.is_active.is_(True),
+                Position.position_code == position_code,
+                Organization.id == org_id,
+            )
+            .distinct()
+        )
+        return set(self.session.scalars(statement))
+
+    def active_user_labels(self, user_ids: set[int]) -> dict[int, str]:
+        if not user_ids:
+            return {}
+        return {
+            user.id: user.username
+            for user in self.session.scalars(
+                select(User).where(
+                    User.id.in_(user_ids),
+                    User.is_active.is_(True),
+                )
+            )
+        }
+
     def list_organizations(self) -> list[Organization]:
         return list(
             self.session.scalars(
