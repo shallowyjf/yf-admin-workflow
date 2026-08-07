@@ -1,0 +1,206 @@
+"""I02 IAM persistence model.
+
+Roles and positions deliberately bind to UserOrganization rather than User.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+    text,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.db.base import Base
+from app.db.mixins import IdTimestampMixin
+
+
+class User(IdTimestampMixin, Base):
+    __tablename__ = "sys_user"
+
+    username: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+    display_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    phone: Mapped[str | None] = mapped_column(String(40))
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("1"),
+    )
+
+    memberships: Mapped[list[UserOrganization]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+
+class Organization(IdTimestampMixin, Base):
+    __tablename__ = "sys_org"
+    __table_args__ = (
+        Index("ix_sys_org_parent_id", "parent_id"),
+        Index("ix_sys_org_org_path", "org_path"),
+    )
+
+    parent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sys_org.id", ondelete="RESTRICT")
+    )
+    org_code: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+    org_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    org_type: Mapped[str | None] = mapped_column(String(40))
+    org_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    sort_no: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("1"),
+    )
+
+    parent: Mapped[Organization | None] = relationship(
+        remote_side="Organization.id",
+        back_populates="children",
+    )
+    children: Mapped[list[Organization]] = relationship(back_populates="parent")
+    memberships: Mapped[list[UserOrganization]] = relationship(
+        back_populates="organization"
+    )
+
+
+class Role(IdTimestampMixin, Base):
+    __tablename__ = "sys_role"
+
+    role_code: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+    role_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    role_type: Mapped[str | None] = mapped_column(String(40))
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("1"),
+    )
+
+    membership_links: Mapped[list[UserOrganizationRole]] = relationship(
+        back_populates="role"
+    )
+
+
+class Position(IdTimestampMixin, Base):
+    __tablename__ = "sys_position"
+
+    position_code: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+    position_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("1"),
+    )
+
+    membership_links: Mapped[list[UserOrganizationPosition]] = relationship(
+        back_populates="position"
+    )
+
+
+class UserOrganization(IdTimestampMixin, Base):
+    __tablename__ = "sys_user_org"
+    __table_args__ = (
+        UniqueConstraint("user_id", "org_id", name="uq_sys_user_org_user_org"),
+        Index("ix_sys_user_org_org_id", "org_id"),
+    )
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("sys_user.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    org_id: Mapped[int] = mapped_column(
+        ForeignKey("sys_org.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    is_primary: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("0"),
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("1"),
+    )
+    joined_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    user: Mapped[User] = relationship(back_populates="memberships")
+    organization: Mapped[Organization] = relationship(back_populates="memberships")
+    role_links: Mapped[list[UserOrganizationRole]] = relationship(
+        back_populates="membership",
+        cascade="all, delete-orphan",
+    )
+    position_links: Mapped[list[UserOrganizationPosition]] = relationship(
+        back_populates="membership",
+        cascade="all, delete-orphan",
+    )
+
+
+class UserOrganizationRole(IdTimestampMixin, Base):
+    __tablename__ = "sys_user_org_role"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_org_id",
+            "role_id",
+            name="uq_sys_user_org_role_membership_role",
+        ),
+        Index("ix_sys_user_org_role_role_id", "role_id"),
+    )
+
+    user_org_id: Mapped[int] = mapped_column(
+        ForeignKey("sys_user_org.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    role_id: Mapped[int] = mapped_column(
+        ForeignKey("sys_role.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    membership: Mapped[UserOrganization] = relationship(back_populates="role_links")
+    role: Mapped[Role] = relationship(back_populates="membership_links")
+
+
+class UserOrganizationPosition(IdTimestampMixin, Base):
+    __tablename__ = "sys_user_org_position"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_org_id",
+            "position_id",
+            name="uq_sys_user_org_position_membership_position",
+        ),
+        Index("ix_sys_user_org_position_position_id", "position_id"),
+    )
+
+    user_org_id: Mapped[int] = mapped_column(
+        ForeignKey("sys_user_org.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    position_id: Mapped[int] = mapped_column(
+        ForeignKey("sys_position.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    membership: Mapped[UserOrganization] = relationship(
+        back_populates="position_links"
+    )
+    position: Mapped[Position] = relationship(back_populates="membership_links")

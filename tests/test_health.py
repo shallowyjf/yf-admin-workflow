@@ -1,14 +1,14 @@
 from fastapi.testclient import TestClient
 
 
-def test_health_returns_i01_status_and_database_connectivity(client: TestClient) -> None:
+def test_health_returns_current_iteration_and_database_connectivity(client: TestClient) -> None:
     response = client.get("/health")
 
     assert response.status_code == 200
     assert response.json() == {
         "status": "ok",
         "database": "ok",
-        "iteration": "I01",
+        "iteration": "I02",
         "version": "0.1.0",
     }
 

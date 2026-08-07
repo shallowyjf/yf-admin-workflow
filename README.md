@@ -1,6 +1,6 @@
 # 统一权限与流程工单平台 Python Demo
 
-这是正式系统前的可运行架构原型，用于逐轮验证 IAM、CandidateResolver、WorkflowTask 与 WorkOrder 的领域边界。当前代码完成 **I01：项目骨架与数据库基础**，尚未实现业务页面或权限流程。
+这是正式系统前的可运行架构原型，用于逐轮验证 IAM、CandidateResolver、WorkflowTask 与 WorkOrder 的领域边界。当前代码完成 **I02：IAM 基础模型**，尚未实现 Permission、登录或流程工单。
 
 ## 环境
 
@@ -18,6 +18,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 Copy-Item .env.example .env
 .\.venv\Scripts\python.exe -m alembic upgrade head
+.\.venv\Scripts\python.exe -m app.iam.seed
 ```
 
 ## 运行
@@ -40,6 +41,6 @@ Copy-Item .env.example .env
 
 ## 当前边界
 
-I01 只建立应用工厂、配置、数据库会话、Alembic 迁移、健康检查和测试基础设施。用户、组织、角色、权限、流程和工单将在后续迭代按设计任务书逐轮实现。
+I02 已实现 User、Organization、Role、Position、UserOrganization，以及组织内角色和岗位关系。角色与岗位只能通过 UserOrganization 绑定，User 模型不存在 `org_id` 或 `role_id`。Permission、DataScope、登录、候选人、流程和工单将在后续迭代实现。
 
-设计约束见 `AI_CODING_RULES.md`，本轮验收见 `docs/iterations/I01.md`。
+设计约束见 `AI_CODING_RULES.md`，本轮验收见 `docs/iterations/I02.md`。
