@@ -1,7 +1,16 @@
+[project]
+name = "yf-admin-workflow"
+version = "0.1.0"
+description = "统一权限与流程工单平台架构验证 Demo"
+requires-python = ">=3.12"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q --strict-markers"
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

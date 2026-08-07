@@ -1,12 +1,15 @@
-# Local research sources and generated artifacts are intentionally kept off GitHub.
-/.agents/
-/output/
-/work/
-/tools/
-/和达内部资料/
-/四家水务信息化系统图片_50张/
-/*.docx
-*.pyc
+# Python
 __pycache__/
+*.py[cod]
 .pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local environment and runtime data
 .venv/
+.env
+/var/
+
+# Original design delivery pack (kept locally; curated docs live in this repository)
+/python_aicoding_demo_design/
