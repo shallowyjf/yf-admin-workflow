@@ -24,3 +24,11 @@ def test_auth_router_delegates_persistence_to_services() -> None:
     assert ".commit(" not in router_source
     assert "select(" not in router_source
     assert "AuthService" in router_source
+
+
+def test_iam_router_delegates_persistence_and_authorization_to_services() -> None:
+    router_source = Path("app/iam/router.py").read_text(encoding="utf-8")
+
+    assert ".commit(" not in router_source
+    assert "select(" not in router_source
+    assert "OrganizationAdministrationService" in router_source

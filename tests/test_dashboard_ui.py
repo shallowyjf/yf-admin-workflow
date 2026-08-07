@@ -185,3 +185,54 @@ def test_templates_do_not_encode_stable_permission_codes() -> None:
     source = "\n".join(path.read_text(encoding="utf-8") for path in template_root.glob("*.html"))
     assert "workorder:" not in source
     assert "system:" not in source
+
+
+def test_organization_page_crud_and_permission_boundary(
+    ui_client: TestClient,
+) -> None:
+    _login(ui_client, "admin")
+    page = ui_client.get("/iam/organizations")
+    assert 'data-testid="create-organization"' in page.text
+    created = ui_client.post(
+        "/ui/organizations",
+        data={
+            "org_code": "UI_TEAM",
+            "org_name": "页面验收班组",
+            "org_type": "TEAM",
+            "parent_code": "PIPE_OPERATION",
+            "sort_no": "88",
+        },
+        follow_redirects=False,
+    )
+    assert created.status_code == 303
+    organizations = ui_client.get("/api/orgs").json()
+    organization_id = next(item["id"] for item in organizations if item["org_code"] == "UI_TEAM")
+    updated = ui_client.post(
+        f"/ui/organizations/{organization_id}/update",
+        data={
+            "org_name": "页面验收班组（更新）",
+            "org_type": "TEAM",
+            "parent_code": "GROUP",
+            "sort_no": "89",
+        },
+        follow_redirects=False,
+    )
+    assert updated.status_code == 303
+    assert "页面验收班组（更新）" in ui_client.get("/iam/organizations").text
+    assert ui_client.post(
+        f"/ui/organizations/{organization_id}/status",
+        data={"is_active": "false"},
+        follow_redirects=False,
+    ).status_code == 303
+    assert ui_client.post(
+        f"/ui/organizations/{organization_id}/delete",
+        follow_redirects=False,
+    ).status_code == 303
+
+    _login(ui_client, "lisi")
+    assert ui_client.get("/iam/organizations").status_code == 403
+    forbidden = ui_client.post(
+        "/ui/organizations",
+        data={"org_code": "UI_FORBIDDEN", "org_name": "越权组织"},
+    )
+    assert forbidden.status_code == 403

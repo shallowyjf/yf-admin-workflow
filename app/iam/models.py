@@ -81,6 +81,22 @@ class Organization(IdTimestampMixin, Base):
     )
 
 
+class IAMAuditLog(IdTimestampMixin, Base):
+    __tablename__ = "sys_iam_audit_log"
+    __table_args__ = (
+        Index("ix_sys_iam_audit_entity", "entity_type", "entity_id"),
+        Index("ix_sys_iam_audit_operator_id", "operator_id"),
+    )
+
+    entity_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    entity_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    action: Mapped[str] = mapped_column(String(40), nullable=False)
+    operator_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sys_user.id", ondelete="SET NULL")
+    )
+    payload_json: Mapped[dict | None] = mapped_column(JSON)
+
+
 class Role(IdTimestampMixin, Base):
     __tablename__ = "sys_role"
 

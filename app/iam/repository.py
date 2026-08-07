@@ -1,9 +1,10 @@
 """Repository for IAM and authorization entities."""
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from .models import (
+    IAMAuditLog,
     Organization,
     Permission,
     Position,
@@ -34,12 +35,69 @@ class IAMRepository:
     def refresh(self, entity: object) -> None:
         self.session.refresh(entity)
 
+    def flush(self) -> None:
+        self.session.flush()
+
+    def delete(self, entity: object) -> None:
+        self.session.delete(entity)
+
     def get_user_by_username(self, username: str) -> User | None:
         return self.session.scalar(select(User).where(User.username == username))
 
     def get_organization_by_code(self, org_code: str) -> Organization | None:
         return self.session.scalar(
             select(Organization).where(Organization.org_code == org_code)
+        )
+
+    def get_organization(self, organization_id: int) -> Organization | None:
+        return self.session.get(Organization, organization_id)
+
+    def list_descendant_organizations(
+        self,
+        organization: Organization,
+    ) -> list[Organization]:
+        return list(
+            self.session.scalars(
+                select(Organization)
+                .where(Organization.org_path.like(f"{organization.org_path}/%"))
+                .order_by(Organization.org_path)
+            )
+        )
+
+    def count_organization_children(self, organization_id: int) -> int:
+        return int(
+            self.session.scalar(
+                select(func.count())
+                .select_from(Organization)
+                .where(Organization.parent_id == organization_id)
+            )
+            or 0
+        )
+
+    def count_organization_memberships(self, organization_id: int) -> int:
+        return int(
+            self.session.scalar(
+                select(func.count())
+                .select_from(UserOrganization)
+                .where(UserOrganization.org_id == organization_id)
+            )
+            or 0
+        )
+
+    def list_iam_audit_logs(
+        self,
+        entity_type: str,
+        entity_id: int,
+    ) -> list[IAMAuditLog]:
+        return list(
+            self.session.scalars(
+                select(IAMAuditLog)
+                .where(
+                    IAMAuditLog.entity_type == entity_type,
+                    IAMAuditLog.entity_id == entity_id,
+                )
+                .order_by(IAMAuditLog.id)
+            )
         )
 
     def get_role_by_code(self, role_code: str) -> Role | None:

@@ -3,6 +3,7 @@
 from collections import Counter
 
 from app.auth.service import AuthProfile
+from app.iam.admin_service import OrganizationAdministrationService
 from app.iam.authorization import PermissionService
 from app.iam.service import IAMService
 from app.workflow.models import WorkflowTask
@@ -39,11 +40,13 @@ class DashboardService:
         permission_service: PermissionService,
         work_order_service: WorkOrderService,
         workflow_service: WorkflowService,
+        organization_admin_service: OrganizationAdministrationService,
     ) -> None:
         self.iam_service = iam_service
         self.permission_service = permission_service
         self.work_order_service = work_order_service
         self.workflow_service = workflow_service
+        self.organization_admin_service = organization_admin_service
 
     def common_context(
         self,
@@ -105,7 +108,18 @@ class DashboardService:
 
     def organizations(self, profile: AuthProfile) -> dict:
         self._require_system_page(profile, "organizations")
-        return {"organizations": self.iam_service.list_organizations()}
+        organizations = self.iam_service.list_organizations()
+        permissions = set(profile.permission_codes)
+        return {
+            "organizations": organizations,
+            "organization_codes": {item.id: item.org_code for item in organizations},
+            "organization_capabilities": {
+                "create": "system:org:create" in permissions,
+                "update": "system:org:update" in permissions,
+                "status": "system:org:status" in permissions,
+                "delete": "system:org:delete" in permissions,
+            },
+        }
 
     def users(self, profile: AuthProfile) -> dict:
         self._require_system_page(profile, "users")

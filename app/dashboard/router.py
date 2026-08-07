@@ -21,9 +21,18 @@ from app.auth.service import (
     RequestContext,
 )
 from app.db.dependencies import get_db_session
+from app.iam.admin_service import (
+    CreateOrganizationCommand,
+    IAMAdministrationActor,
+    IAMAdministrationConflict,
+    IAMAdministrationPermissionDenied,
+    IAMAdministrationValidationError,
+    OrganizationAdministrationService,
+    UpdateOrganizationCommand,
+)
 from app.iam.authorization import PermissionService
 from app.iam.repository import IAMRepository
-from app.iam.service import IAMService
+from app.iam.service import DuplicateIAMCode, IAMEntityNotFound, IAMService
 from app.workflow.domain import TaskAccessDenied, WorkflowError
 from app.workflow.factory import build_workflow_service
 from app.workorder.domain import (
@@ -84,6 +93,7 @@ def get_dashboard_service(
         permission_service,
         work_order_service,
         workflow_service,
+        OrganizationAdministrationService(iam_repository, permission_service),
     )
 
 
@@ -124,13 +134,24 @@ def _friendly_error(
     identity: PageIdentity,
     error: Exception,
 ) -> HTMLResponse:
-    if isinstance(error, (PageAccessDenied, TaskAccessDenied, WorkOrderPermissionDenied)):
+    if isinstance(
+        error,
+        (
+            IAMAdministrationPermissionDenied,
+            PageAccessDenied,
+            TaskAccessDenied,
+            WorkOrderPermissionDenied,
+        ),
+    ):
         code = status.HTTP_403_FORBIDDEN
         title = "没有访问权限"
-    elif isinstance(error, WorkOrderNotFound):
+    elif isinstance(error, (IAMEntityNotFound, WorkOrderNotFound)):
         code = status.HTTP_404_NOT_FOUND
         title = "没有找到工单"
-    elif isinstance(error, WorkOrderValidationError):
+    elif isinstance(
+        error,
+        (IAMAdministrationValidationError, ValueError, WorkOrderValidationError),
+    ):
         code = status.HTTP_422_UNPROCESSABLE_ENTITY
         title = "提交内容不完整"
     else:
@@ -318,6 +339,135 @@ async def active_organization_page(
         raise PageAccessDenied("无法切换到该组织") from error
     return RedirectResponse(
         values.get("next", "/dashboard"), status_code=status.HTTP_303_SEE_OTHER
+    )
+
+
+def _iam_actor(identity: PageIdentity) -> IAMAdministrationActor:
+    return IAMAdministrationActor(
+        identity.context.current_user_id,
+        identity.context.active_org_id,
+    )
+
+
+@router.post("/ui/organizations", include_in_schema=False, response_model=None)
+async def create_organization_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse | RedirectResponse:
+    values = await _form(request)
+    try:
+        service.organization_admin_service.create(
+            CreateOrganizationCommand(
+                org_code=values.get("org_code", ""),
+                org_name=values.get("org_name", ""),
+                org_type=values.get("org_type") or None,
+                parent_code=values.get("parent_code") or None,
+                sort_no=int(values.get("sort_no", "0")),
+            ),
+            _iam_actor(identity),
+        )
+    except (
+        DuplicateIAMCode,
+        IAMAdministrationPermissionDenied,
+        IAMAdministrationValidationError,
+        IAMEntityNotFound,
+        ValueError,
+    ) as error:
+        return _friendly_error(request, service, identity, error)
+    return RedirectResponse(
+        "/iam/organizations", status_code=status.HTTP_303_SEE_OTHER
+    )
+
+
+@router.post(
+    "/ui/organizations/{organization_id}/update",
+    include_in_schema=False,
+    response_model=None,
+)
+async def update_organization_page(
+    request: Request,
+    organization_id: int,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse | RedirectResponse:
+    values = await _form(request)
+    try:
+        service.organization_admin_service.update(
+            organization_id,
+            UpdateOrganizationCommand(
+                org_name=values.get("org_name", ""),
+                org_type=values.get("org_type") or None,
+                parent_code=values.get("parent_code") or None,
+                sort_no=int(values.get("sort_no", "0")),
+            ),
+            _iam_actor(identity),
+        )
+    except (
+        IAMAdministrationPermissionDenied,
+        IAMAdministrationValidationError,
+        IAMEntityNotFound,
+        ValueError,
+    ) as error:
+        return _friendly_error(request, service, identity, error)
+    return RedirectResponse(
+        "/iam/organizations", status_code=status.HTTP_303_SEE_OTHER
+    )
+
+
+@router.post(
+    "/ui/organizations/{organization_id}/status",
+    include_in_schema=False,
+    response_model=None,
+)
+async def organization_status_page(
+    request: Request,
+    organization_id: int,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse | RedirectResponse:
+    values = await _form(request)
+    try:
+        service.organization_admin_service.set_active(
+            organization_id,
+            values.get("is_active", "").lower() == "true",
+            _iam_actor(identity),
+        )
+    except (
+        IAMAdministrationConflict,
+        IAMAdministrationPermissionDenied,
+        IAMEntityNotFound,
+    ) as error:
+        return _friendly_error(request, service, identity, error)
+    return RedirectResponse(
+        "/iam/organizations", status_code=status.HTTP_303_SEE_OTHER
+    )
+
+
+@router.post(
+    "/ui/organizations/{organization_id}/delete",
+    include_in_schema=False,
+    response_model=None,
+)
+async def delete_organization_page(
+    request: Request,
+    organization_id: int,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse | RedirectResponse:
+    try:
+        service.organization_admin_service.delete(
+            organization_id,
+            _iam_actor(identity),
+        )
+    except (
+        IAMAdministrationConflict,
+        IAMAdministrationPermissionDenied,
+        IAMEntityNotFound,
+    ) as error:
+        return _friendly_error(request, service, identity, error)
+    return RedirectResponse(
+        "/iam/organizations", status_code=status.HTTP_303_SEE_OTHER
     )
 
 

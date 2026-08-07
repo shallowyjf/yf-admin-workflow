@@ -1,6 +1,6 @@
 # 统一权限与流程工单平台 Python Demo
 
-这是正式系统前的可运行架构原型，用于逐轮验证 IAM、功能权限、数据范围、CandidateResolver、WorkflowTask 与 WorkOrder 的领域边界。当前代码完成 **I10：Jinja2 + HTMX 演示页面**。
+这是正式系统前的可运行架构原型，用于逐轮验证 IAM、功能权限、数据范围、CandidateResolver、WorkflowTask 与 WorkOrder 的领域边界。当前代码完成 **I11：组织管理 CRUD 与 IAM 审计**。
 
 ## 环境
 
@@ -59,10 +59,10 @@ Copy-Item .env.example .env
 - `wangwu`：创建、提交、派单、复核和关闭工单；
 - `lisi`：查看候选任务、认领工单并提交处理结果。
 
-页面提供登录、工作台、五个 IAM 查询视图、工单列表、工单详情和我的任务共 10 个核心视图。导航和动作按钮由服务层按有效权限计算；隐藏按钮不替代接口二次鉴权。
+页面提供登录、工作台、五个 IAM 管理视图、工单列表、工单详情和我的任务共 10 个核心视图。组织管理已经支持新增、编辑、调整父级与排序、启停和安全删除；导航和动作按钮由服务层按有效权限计算，隐藏按钮不替代接口二次鉴权。
 
 ## 当前边界
 
-I10 在 I09 后端闭环之上增加轻量服务端页面。所有页面动作复用既有 AuthService、WorkOrderService 与 WorkflowService，不直接修改流程状态；HTMX 不可用时，标准表单和链接仍能完成演示。
+I11 在 I10 页面基础上增加组织管理闭环和 IAM 审计日志。组织编码创建后不可修改；删除前检查子组织、成员关系和数据库业务引用。用户、角色、岗位和权限字典的写操作按 `docs/iterations/ROADMAP_I11_I15.md` 在后续迭代完成。
 
-Demo 用户为 `admin`、`wangwu`、`zhangsan`、`lisi`、`zhaoliu`，初始密码统一为 `Demo@123456`，仅限本地演示。候选人解析演示可运行 `.\.venv\Scripts\python.exe -m app.demo.candidate_demo`。设计约束见 `AI_CODING_RULES.md`，本轮验收见 `docs/iterations/I10.md`。
+Demo 用户为 `admin`、`wangwu`、`zhangsan`、`lisi`、`zhaoliu`，初始密码统一为 `Demo@123456`，仅限本地演示。候选人解析演示可运行 `.\.venv\Scripts\python.exe -m app.demo.candidate_demo`。设计约束见 `AI_CODING_RULES.md`，本轮验收见 `docs/iterations/I11.md`。

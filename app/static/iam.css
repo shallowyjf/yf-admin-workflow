@@ -1,0 +1,30 @@
+.inline-actions {
+  align-items: flex-start;
+  display: flex;
+  gap: 6px;
+  position: relative;
+}
+
+.inline-actions summary {
+  list-style: none;
+}
+
+.inline-actions details {
+  position: relative;
+}
+
+.popover-form {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  position: absolute;
+  right: 0;
+  top: 40px;
+  width: 300px;
+  z-index: 8;
+}

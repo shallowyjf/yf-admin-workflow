@@ -7,9 +7,10 @@ from sqlalchemy import create_engine, inspect
 from app.db.base import Base
 
 
-def test_shared_declarative_base_contains_i07_workflow_tables() -> None:
+def test_shared_declarative_base_contains_current_tables() -> None:
     assert set(Base.metadata.tables) == {
         "sys_auth_session",
+        "sys_iam_audit_log",
         "sys_org",
         "sys_permission",
         "sys_position",
@@ -153,4 +154,21 @@ def test_i07_migration_creates_and_removes_workflow_tables(
 
     command.downgrade(config, "0005_i06")
     assert not workflow_tables & set(inspect(engine).get_table_names())
+    engine.dispose()
+
+
+def test_i11_migration_creates_and_removes_iam_audit_table(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "i11.db"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    config = Config("alembic.ini")
+    config.set_main_option("sqlalchemy.url", database_url)
+
+    command.upgrade(config, "0007_i11")
+    engine = create_engine(database_url)
+    assert "sys_iam_audit_log" in inspect(engine).get_table_names()
+
+    command.downgrade(config, "0006_i07")
+    assert "sys_iam_audit_log" not in inspect(engine).get_table_names()
     engine.dispose()
