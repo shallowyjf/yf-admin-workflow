@@ -7,7 +7,7 @@ from sqlalchemy import create_engine, inspect
 from app.db.base import Base
 
 
-def test_shared_declarative_base_contains_i03_authorization_tables() -> None:
+def test_shared_declarative_base_contains_i06_work_order_tables() -> None:
     assert set(Base.metadata.tables) == {
         "sys_auth_session",
         "sys_org",
@@ -20,6 +20,8 @@ def test_shared_declarative_base_contains_i03_authorization_tables() -> None:
         "sys_user_org",
         "sys_user_org_position",
         "sys_user_org_role",
+        "wo_action",
+        "wo_work_order",
     }
 
 
@@ -99,10 +101,27 @@ def test_i04_migration_creates_and_removes_auth_session_table(
     config = Config("alembic.ini")
     config.set_main_option("sqlalchemy.url", database_url)
 
-    command.upgrade(config, "head")
+    command.upgrade(config, "0004_i04")
     engine = create_engine(database_url)
     assert "sys_auth_session" in inspect(engine).get_table_names()
 
     command.downgrade(config, "0003_i03")
     assert "sys_auth_session" not in inspect(engine).get_table_names()
+    engine.dispose()
+
+
+def test_i06_migration_creates_and_removes_work_order_tables(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "i06.db"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    config = Config("alembic.ini")
+    config.set_main_option("sqlalchemy.url", database_url)
+
+    command.upgrade(config, "head")
+    engine = create_engine(database_url)
+    assert {"wo_work_order", "wo_action"} <= set(inspect(engine).get_table_names())
+
+    command.downgrade(config, "0004_i04")
+    assert not {"wo_work_order", "wo_action"} & set(inspect(engine).get_table_names())
     engine.dispose()

@@ -13,6 +13,7 @@ from app.db.session import Database
 from app.system.repository import HealthRepository
 from app.system.router import router as system_router
 from app.system.service import HealthService
+from app.workorder.router import router as work_order_router
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -40,6 +41,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     application.include_router(system_router)
     application.include_router(auth_router)
+    application.include_router(work_order_router)
     return application
 
 

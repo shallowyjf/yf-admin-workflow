@@ -1,0 +1,97 @@
+"""Work-order aggregate and immutable action timeline records."""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Index, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.db.base import Base
+from app.db.mixins import IdTimestampMixin
+
+from .domain import InvalidWorkOrderTransition, WorkOrderStatus
+
+
+class WorkOrder(IdTimestampMixin, Base):
+    __tablename__ = "wo_work_order"
+    __table_args__ = (
+        Index("ix_wo_work_order_status", "status"),
+        Index("ix_wo_work_order_current_org_id", "current_org_id"),
+        Index("ix_wo_work_order_current_assignee_id", "current_assignee_id"),
+        Index("ix_wo_work_order_created_at", "created_at"),
+    )
+
+    work_order_no: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(240), nullable=False)
+    work_order_type: Mapped[str] = mapped_column("type", String(60), nullable=False)
+    source_type: Mapped[str | None] = mapped_column(String(60))
+    source_id: Mapped[str | None] = mapped_column(String(120))
+    priority: Mapped[str] = mapped_column(String(30), nullable=False, default="NORMAL")
+    owner_org_id: Mapped[int] = mapped_column(
+        ForeignKey("sys_org.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    current_org_id: Mapped[int] = mapped_column(
+        ForeignKey("sys_org.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    current_assignee_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sys_user.id", ondelete="SET NULL")
+    )
+    status: Mapped[str] = mapped_column(
+        String(40),
+        nullable=False,
+        default=WorkOrderStatus.DRAFT.value,
+    )
+    asset_type: Mapped[str | None] = mapped_column(String(60))
+    asset_id: Mapped[str | None] = mapped_column(String(120))
+    location: Mapped[str | None] = mapped_column(String(500))
+    longitude: Mapped[float | None] = mapped_column(Float)
+    latitude: Mapped[float | None] = mapped_column(Float)
+    description: Mapped[str | None] = mapped_column(Text)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_by: Mapped[int] = mapped_column(
+        ForeignKey("sys_user.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+
+    actions: Mapped[list[WorkOrderAction]] = relationship(
+        back_populates="work_order",
+        cascade="all, delete-orphan",
+    )
+
+    def submit(self) -> tuple[str, str]:
+        if self.status != WorkOrderStatus.DRAFT.value:
+            raise InvalidWorkOrderTransition(
+                f"cannot submit work order from status {self.status}"
+            )
+        previous_status = self.status
+        self.status = WorkOrderStatus.PENDING_DISPATCH.value
+        return previous_status, self.status
+
+
+class WorkOrderAction(IdTimestampMixin, Base):
+    __tablename__ = "wo_action"
+    __table_args__ = (
+        Index("ix_wo_action_work_order_id", "work_order_id"),
+        Index("ix_wo_action_created_at", "created_at"),
+    )
+
+    work_order_id: Mapped[int] = mapped_column(
+        ForeignKey("wo_work_order.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    action_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    operator_id: Mapped[int] = mapped_column(
+        ForeignKey("sys_user.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    from_status: Mapped[str | None] = mapped_column(String(40))
+    to_status: Mapped[str] = mapped_column(String(40), nullable=False)
+    comment: Mapped[str | None] = mapped_column(Text)
+    payload_json: Mapped[dict | None] = mapped_column(JSON)
+
+    work_order: Mapped[WorkOrder] = relationship(back_populates="actions")
