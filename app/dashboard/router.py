@@ -1,0 +1,427 @@
+"""Server-rendered demonstration pages and form actions."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Annotated
+from urllib.parse import parse_qs
+
+from fastapi import APIRouter, Depends, Request, status
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+from sqlalchemy.orm import Session
+
+from app.auth.router import get_auth_service
+from app.auth.service import (
+    ActiveOrganizationDenied,
+    AuthenticationError,
+    AuthProfile,
+    AuthService,
+    RequestContext,
+)
+from app.db.dependencies import get_db_session
+from app.iam.authorization import PermissionService
+from app.iam.repository import IAMRepository
+from app.iam.service import IAMService
+from app.workflow.domain import TaskAccessDenied, WorkflowError
+from app.workflow.factory import build_workflow_service
+from app.workorder.domain import (
+    WorkOrderError,
+    WorkOrderNotFound,
+    WorkOrderPermissionDenied,
+    WorkOrderValidationError,
+)
+from app.workorder.repository import WorkOrderRepository
+from app.workorder.service import (
+    CreateWorkOrderCommand,
+    WorkOrderActor,
+    WorkOrderService,
+)
+
+from .domain import PageAccessDenied, PageAuthenticationRequired
+from .service import DashboardService
+
+router = APIRouter(tags=["demo-pages"])
+templates = Jinja2Templates(
+    directory=str(Path(__file__).resolve().parents[1] / "templates")
+)
+
+
+@dataclass(frozen=True)
+class PageIdentity:
+    context: RequestContext
+    profile: AuthProfile
+
+
+def get_page_identity(
+    request: Request,
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+) -> PageIdentity:
+    settings = request.app.state.settings
+    try:
+        context = auth_service.authenticate(
+            request.cookies.get(settings.auth_cookie_name)
+        )
+        return PageIdentity(context, auth_service.profile(context))
+    except (AuthenticationError, ActiveOrganizationDenied) as error:
+        raise PageAuthenticationRequired(str(error)) from error
+
+
+def get_dashboard_service(
+    session: Annotated[Session, Depends(get_db_session)],
+) -> DashboardService:
+    iam_repository = IAMRepository(session)
+    permission_service = PermissionService(iam_repository)
+    workflow_service = build_workflow_service(session)
+    work_order_service = WorkOrderService(
+        WorkOrderRepository(session),
+        permission_service,
+        workflow_service,
+    )
+    return DashboardService(
+        IAMService(iam_repository),
+        permission_service,
+        work_order_service,
+        workflow_service,
+    )
+
+
+def _page(
+    request: Request,
+    service: DashboardService,
+    identity: PageIdentity,
+    template_name: str,
+    title: str,
+    active_page: str,
+    data: dict | None = None,
+    *,
+    status_code: int = status.HTTP_200_OK,
+) -> HTMLResponse:
+    context = service.common_context(identity.profile, title, active_page)
+    context.update(data or {})
+    context["request"] = request
+    return templates.TemplateResponse(
+        request=request,
+        name=template_name,
+        context=context,
+        status_code=status_code,
+    )
+
+
+async def _form(request: Request) -> dict[str, str]:
+    parsed = parse_qs((await request.body()).decode("utf-8"), keep_blank_values=True)
+    return {key: values[-1] for key, values in parsed.items()}
+
+
+def _actor(identity: PageIdentity) -> WorkOrderActor:
+    return WorkOrderActor(identity.context.current_user_id, identity.context.active_org_id)
+
+
+def _friendly_error(
+    request: Request,
+    service: DashboardService,
+    identity: PageIdentity,
+    error: Exception,
+) -> HTMLResponse:
+    if isinstance(error, (PageAccessDenied, TaskAccessDenied, WorkOrderPermissionDenied)):
+        code = status.HTTP_403_FORBIDDEN
+        title = "没有访问权限"
+    elif isinstance(error, WorkOrderNotFound):
+        code = status.HTTP_404_NOT_FOUND
+        title = "没有找到工单"
+    elif isinstance(error, WorkOrderValidationError):
+        code = status.HTTP_422_UNPROCESSABLE_ENTITY
+        title = "提交内容不完整"
+    else:
+        code = status.HTTP_409_CONFLICT
+        title = "当前操作无法完成"
+    return _page(
+        request,
+        service,
+        identity,
+        "error.html",
+        title,
+        "",
+        {"error_title": title, "error_message": str(error)},
+        status_code=code,
+    )
+
+
+@router.get("/", include_in_schema=False)
+def root() -> RedirectResponse:
+    return RedirectResponse("/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/login", response_class=HTMLResponse, include_in_schema=False)
+def login_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request=request,
+        name="login.html",
+        context={"request": request},
+    )
+
+
+@router.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
+def dashboard_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse:
+    return _page(
+        request,
+        service,
+        identity,
+        "dashboard.html",
+        "工作台",
+        "dashboard",
+        service.dashboard(identity.profile),
+    )
+
+
+def _iam_page(
+    request: Request,
+    identity: PageIdentity,
+    service: DashboardService,
+    page: str,
+    title: str,
+) -> HTMLResponse:
+    try:
+        data = getattr(service, page)(identity.profile)
+    except PageAccessDenied as error:
+        return _friendly_error(request, service, identity, error)
+    return _page(request, service, identity, f"{page}.html", title, page, data)
+
+
+@router.get("/iam/organizations", response_class=HTMLResponse, include_in_schema=False)
+def organizations_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse:
+    return _iam_page(request, identity, service, "organizations", "组织管理")
+
+
+@router.get("/iam/users", response_class=HTMLResponse, include_in_schema=False)
+def users_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse:
+    return _iam_page(request, identity, service, "users", "用户管理")
+
+
+@router.get("/iam/roles", response_class=HTMLResponse, include_in_schema=False)
+def roles_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse:
+    return _iam_page(request, identity, service, "roles", "角色管理")
+
+
+@router.get("/iam/positions", response_class=HTMLResponse, include_in_schema=False)
+def positions_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse:
+    return _iam_page(request, identity, service, "positions", "岗位管理")
+
+
+@router.get("/iam/permissions", response_class=HTMLResponse, include_in_schema=False)
+def permissions_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse:
+    return _iam_page(request, identity, service, "permissions", "权限管理")
+
+
+@router.get("/workorders", response_class=HTMLResponse, include_in_schema=False)
+def work_orders_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse:
+    try:
+        data = service.work_orders(identity.profile)
+    except WorkOrderError as error:
+        return _friendly_error(request, service, identity, error)
+    return _page(
+        request, service, identity, "workorders.html", "工单中心", "workorders", data
+    )
+
+
+@router.get("/workorders/{work_order_id}", response_class=HTMLResponse, include_in_schema=False)
+def work_order_detail_page(
+    request: Request,
+    work_order_id: int,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse:
+    try:
+        data = service.work_order_detail(identity.profile, work_order_id)
+    except (WorkOrderError, WorkflowError) as error:
+        return _friendly_error(request, service, identity, error)
+    return _page(
+        request,
+        service,
+        identity,
+        "workorder_detail.html",
+        "工单详情",
+        "workorders",
+        data,
+    )
+
+
+@router.get("/tasks/mine", response_class=HTMLResponse, include_in_schema=False)
+def my_tasks_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse:
+    return _page(
+        request,
+        service,
+        identity,
+        "tasks.html",
+        "我的任务",
+        "tasks",
+        service.my_tasks(identity.profile),
+    )
+
+
+@router.post("/logout", include_in_schema=False)
+def logout_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+) -> RedirectResponse:
+    settings = request.app.state.settings
+    auth_service.logout(identity.context)
+    response = RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    response.delete_cookie(settings.auth_cookie_name, path="/")
+    return response
+
+
+@router.post("/active-org", include_in_schema=False)
+async def active_organization_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+) -> RedirectResponse:
+    values = await _form(request)
+    try:
+        auth_service.switch_active_organization(identity.context, int(values["org_id"]))
+    except (ActiveOrganizationDenied, KeyError, ValueError) as error:
+        raise PageAccessDenied("无法切换到该组织") from error
+    return RedirectResponse(
+        values.get("next", "/dashboard"), status_code=status.HTTP_303_SEE_OTHER
+    )
+
+
+@router.post("/ui/workorders", include_in_schema=False, response_model=None)
+async def create_work_order_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse | RedirectResponse:
+    values = await _form(request)
+    try:
+        work_order = service.work_order_service.create(
+            CreateWorkOrderCommand(
+                title=values.get("title", ""),
+                work_order_type=values.get("type", ""),
+                priority=values.get("priority", "NORMAL"),
+                location=values.get("location") or None,
+                description=values.get("description") or None,
+            ),
+            _actor(identity),
+        )
+    except WorkOrderError as error:
+        return _friendly_error(request, service, identity, error)
+    return RedirectResponse(
+        f"/workorders/{work_order.id}", status_code=status.HTTP_303_SEE_OTHER
+    )
+
+
+@router.post(
+    "/ui/workorders/{work_order_id}/{action}",
+    include_in_schema=False,
+    response_model=None,
+)
+async def work_order_action_page(
+    request: Request,
+    work_order_id: int,
+    action: str,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse | RedirectResponse:
+    values = await _form(request)
+    actor = _actor(identity)
+    actions = {
+        "submit": lambda: service.work_order_service.submit(
+            work_order_id, actor, values.get("comment") or None
+        ),
+        "dispatch": lambda: service.work_order_service.dispatch(
+            work_order_id,
+            int(values.get("target_org_id", "")),
+            actor,
+            values.get("comment") or None,
+        ),
+        "claim": lambda: service.work_order_service.claim(
+            work_order_id, actor, values.get("comment") or None
+        ),
+        "result": lambda: service.work_order_service.submit_result(
+            work_order_id,
+            actor,
+            values.get("result", ""),
+            values.get("comment") or None,
+        ),
+        "review": lambda: service.work_order_service.review(
+            work_order_id,
+            actor,
+            values.get("decision", ""),
+            values.get("comment") or None,
+        ),
+        "close": lambda: service.work_order_service.close(
+            work_order_id, actor, values.get("comment") or None
+        ),
+    }
+    try:
+        actions[action]()
+    except KeyError:
+        return _friendly_error(
+            request, service, identity, ValueError(f"不支持的操作：{action}")
+        )
+    except (ValueError, WorkOrderError, WorkflowError) as error:
+        return _friendly_error(request, service, identity, error)
+    next_page = values.get("next") or f"/workorders/{work_order_id}"
+    return RedirectResponse(next_page, status_code=status.HTTP_303_SEE_OTHER)
+
+
+async def page_authentication_handler(
+    request: Request, error: PageAuthenticationRequired
+) -> RedirectResponse:
+    next_page = request.url.path
+    return RedirectResponse(
+        f"/login?next={next_page}", status_code=status.HTTP_303_SEE_OTHER
+    )
+
+
+async def page_access_handler(request: Request, error: PageAccessDenied) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request=request,
+        name="error.html",
+        context={
+            "request": request,
+            "page_title": "没有访问权限",
+            "error_title": "没有访问权限",
+            "error_message": str(error),
+            "navigation": [],
+            "profile": None,
+            "active_page": "",
+        },
+        status_code=status.HTTP_403_FORBIDDEN,
+    )

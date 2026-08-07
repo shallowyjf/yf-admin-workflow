@@ -1,6 +1,6 @@
 # 统一权限与流程工单平台 Python Demo
 
-这是正式系统前的可运行架构原型，用于逐轮验证 IAM、功能权限、数据范围、CandidateResolver、WorkflowTask 与 WorkOrder 的领域边界。当前代码完成 **I09：DMA 完整业务闭环**。
+这是正式系统前的可运行架构原型，用于逐轮验证 IAM、功能权限、数据范围、CandidateResolver、WorkflowTask 与 WorkOrder 的领域边界。当前代码完成 **I10：Jinja2 + HTMX 演示页面**。
 
 ## 环境
 
@@ -31,6 +31,8 @@ Copy-Item .env.example .env
 访问：
 
 - 健康检查：<http://127.0.0.1:8000/health>
+- 演示登录页：<http://127.0.0.1:8000/login>
+- 页面工作台：<http://127.0.0.1:8000/dashboard>
 - OpenAPI：<http://127.0.0.1:8000/docs>
 
 ## 回归测试与质量检查
@@ -49,8 +51,18 @@ Copy-Item .env.example .env
 .\.venv\Scripts\python.exe -m app.demo.dma_workflow_demo
 ```
 
+## 页面演示
+
+访问登录页后，可使用以下统一初始密码 `Demo@123456`：
+
+- `admin`：查看组织、用户、角色、岗位、权限等系统视图；
+- `wangwu`：创建、提交、派单、复核和关闭工单；
+- `lisi`：查看候选任务、认领工单并提交处理结果。
+
+页面提供登录、工作台、五个 IAM 查询视图、工单列表、工单详情和我的任务共 10 个核心视图。导航和动作按钮由服务层按有效权限计算；隐藏按钮不替代接口二次鉴权。
+
 ## 当前边界
 
-I09 已把 IAM、CandidateResolver、WorkflowTask、WorkOrder 和时间线串联为可重复运行的标准 DMA 演示。派单后的工单同时对当前责任组织和原所属组织可见，保证调度中心能够复核、关闭并读取完整时间线。
+I10 在 I09 后端闭环之上增加轻量服务端页面。所有页面动作复用既有 AuthService、WorkOrderService 与 WorkflowService，不直接修改流程状态；HTMX 不可用时，标准表单和链接仍能完成演示。
 
-Demo 用户为 `admin`、`wangwu`、`zhangsan`、`lisi`、`zhaoliu`，初始密码统一为 `Demo@123456`，仅限本地演示。候选人解析演示可运行 `.\.venv\Scripts\python.exe -m app.demo.candidate_demo`。I10 将新增 Jinja2 + HTMX 演示页面和 Dashboard。设计约束见 `AI_CODING_RULES.md`，本轮验收见 `docs/iterations/I09.md`。
+Demo 用户为 `admin`、`wangwu`、`zhangsan`、`lisi`、`zhaoliu`，初始密码统一为 `Demo@123456`，仅限本地演示。候选人解析演示可运行 `.\.venv\Scripts\python.exe -m app.demo.candidate_demo`。设计约束见 `AI_CODING_RULES.md`，本轮验收见 `docs/iterations/I10.md`。

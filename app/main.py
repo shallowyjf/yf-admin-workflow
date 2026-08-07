@@ -4,11 +4,21 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from app.auth.router import router as auth_router
 from app.core.config import Settings, get_settings
+from app.dashboard.domain import PageAccessDenied, PageAuthenticationRequired
+from app.dashboard.router import (
+    page_access_handler,
+    page_authentication_handler,
+)
+from app.dashboard.router import (
+    router as dashboard_router,
+)
 from app.db.session import Database
 from app.system.repository import HealthRepository
 from app.system.router import router as system_router
@@ -44,6 +54,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(auth_router)
     application.include_router(work_order_router)
     application.include_router(workflow_router)
+    application.include_router(dashboard_router)
+    application.mount(
+        "/static",
+        StaticFiles(directory=str(Path(__file__).resolve().parent / "static")),
+        name="static",
+    )
+    application.add_exception_handler(
+        PageAuthenticationRequired, page_authentication_handler
+    )
+    application.add_exception_handler(PageAccessDenied, page_access_handler)
     return application
 
 

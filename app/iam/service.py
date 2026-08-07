@@ -244,6 +244,24 @@ class IAMService:
                 nodes[organization.parent_id].children.append(node)
         return roots
 
+    def list_organizations(self) -> list[Organization]:
+        return self.repository.list_organizations()
+
+    def list_users(self) -> list[User]:
+        return self.repository.list_users()
+
+    def list_roles(self) -> list[Role]:
+        return self.repository.list_roles()
+
+    def list_positions(self) -> list[Position]:
+        return self.repository.list_positions()
+
+    def list_permissions(self) -> list[Permission]:
+        return self.repository.list_permissions()
+
+    def active_user_labels(self, user_ids: set[int]) -> dict[int, str]:
+        return self.repository.active_user_labels(user_ids)
+
     def get_user(self, username: str) -> User | None:
         return self.repository.get_user_by_username(username)
 

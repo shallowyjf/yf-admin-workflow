@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>登录 · 权限流程工单平台</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="login-body">
+  <main class="login-shell">
+    <section class="login-story">
+      <p class="eyebrow light">YF ADMIN WORKFLOW</p>
+      <h1>让权限边界清晰，<br>让每一步流程可追溯。</h1>
+      <p>统一组织、角色、数据范围和工单流转，在一个演示环境里完成闭环。</p>
+      <div class="process-line"><span>建单</span><i></i><span>派单</span><i></i><span>认领</span><i></i><span>复核</span></div>
+    </section>
+    <section class="login-card">
+      <span class="brand-mark large">YF</span>
+      <p class="eyebrow">欢迎回来</p>
+      <h2>登录协同中枢</h2>
+      <p class="muted">使用演示账号进入对应角色的工作空间。</p>
+      <form id="login-form">
+        <label>账号<input name="username" autocomplete="username" value="admin" required></label>
+        <label>密码<input type="password" name="password" autocomplete="current-password" value="Demo@123456" required></label>
+        <p id="login-error" class="form-error" role="alert"></p>
+        <button class="button primary wide" type="submit">进入工作台</button>
+      </form>
+      <div class="demo-hint"><strong>演示账号（统一密码 Demo@123456）</strong><span>admin · 系统管理员</span><span>wangwu · 调度与复核</span><span>lisi · 抢修人员</span></div>
+    </section>
+  </main>
+  <script>
+    const form = document.querySelector('#login-form');
+    const errorBox = document.querySelector('#login-error');
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      errorBox.textContent = '';
+      const values = new FormData(form);
+      const response = await fetch('/auth/login', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(Object.fromEntries(values))
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        errorBox.textContent = payload.detail || '登录失败，请检查账号和密码。';
+        return;
+      }
+      const next = new URLSearchParams(location.search).get('next');
+      location.href = next && next.startsWith('/') ? next : '/dashboard';
+    });
+  </script>
+</body>
+</html>

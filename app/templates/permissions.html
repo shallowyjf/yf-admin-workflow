@@ -1,0 +1,4 @@
+{% extends "base.html" %}{% block content %}
+<section class="page-intro"><div><h2>稳定权限字典</h2><p>页面只消费服务层计算结果，后端接口始终执行二次鉴权。</p></div><button class="button primary" disabled title="本轮提供查询演示">新增权限</button></section>
+<section class="panel"><div class="table-wrap"><table><thead><tr><th>权限编码</th><th>权限名称</th><th>资源类型</th><th>说明</th></tr></thead><tbody>{% for permission in permissions %}<tr><td><code>{{ permission.permission_code }}</code></td><td><strong>{{ permission.permission_name }}</strong></td><td>{{ permission.resource_type or '—' }}</td><td>{{ permission.description or '—' }}</td></tr>{% endfor %}</tbody></table></div></section>
+{% endblock %}

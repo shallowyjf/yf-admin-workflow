@@ -296,3 +296,52 @@ class IAMRepository:
                 select(Organization).order_by(Organization.sort_no, Organization.id)
             )
         )
+
+    def list_users(self) -> list[User]:
+        return list(
+            self.session.scalars(
+                select(User)
+                .options(
+                    selectinload(User.memberships).selectinload(
+                        UserOrganization.organization
+                    ),
+                    selectinload(User.memberships)
+                    .selectinload(UserOrganization.role_links)
+                    .selectinload(UserOrganizationRole.role),
+                    selectinload(User.memberships)
+                    .selectinload(UserOrganization.position_links)
+                    .selectinload(UserOrganizationPosition.position),
+                )
+                .order_by(User.username)
+            )
+        )
+
+    def list_roles(self) -> list[Role]:
+        return list(
+            self.session.scalars(
+                select(Role)
+                .options(
+                    selectinload(Role.permission_links).selectinload(
+                        RolePermission.permission
+                    ),
+                    selectinload(Role.data_scopes),
+                )
+                .order_by(Role.role_code)
+            )
+        )
+
+    def list_positions(self) -> list[Position]:
+        return list(
+            self.session.scalars(
+                select(Position)
+                .options(selectinload(Position.membership_links))
+                .order_by(Position.position_code)
+            )
+        )
+
+    def list_permissions(self) -> list[Permission]:
+        return list(
+            self.session.scalars(
+                select(Permission).order_by(Permission.permission_code)
+            )
+        )

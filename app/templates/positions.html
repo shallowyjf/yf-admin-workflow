@@ -1,0 +1,4 @@
+{% extends "base.html" %}{% block content %}
+<section class="page-intro"><div><h2>岗位字典</h2><p>岗位用于表达组织内职责，可参与流程候选人解析。</p></div><button class="button primary" disabled title="本轮提供查询演示">新增岗位</button></section>
+<section class="card-grid small">{% for position in positions %}<article class="entity-card"><div class="entity-title"><span class="role-icon">P</span><span><strong>{{ position.position_name }}</strong><small>{{ position.position_code }}</small></span><span class="status">{{ '启用' if position.is_active else '停用' }}</span></div><p class="muted">已绑定 {{ position.membership_links|length }} 个用户组织关系</p></article>{% endfor %}</section>
+{% endblock %}

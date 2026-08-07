@@ -1,0 +1,3 @@
+{% extends "base.html" %}{% block content %}
+<section class="error-panel"><span class="error-code">{{ response_status if response_status else '!' }}</span><p class="eyebrow">OPERATION NOTICE</p><h2>{{ error_title }}</h2><p>{{ error_message }}</p><div class="button-row center"><button class="button ghost" onclick="history.back()">返回上一页</button><a class="button primary" href="/dashboard">回到工作台</a></div></section>
+{% endblock %}

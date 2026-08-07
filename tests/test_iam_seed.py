@@ -28,9 +28,9 @@ def test_seed_is_idempotent_and_creates_required_relationships(
     assert db_session.scalar(select(func.count()).select_from(User)) == 5
     assert db_session.scalar(select(func.count()).select_from(Role)) == 5
     assert db_session.scalar(select(func.count()).select_from(Position)) == 3
-    assert db_session.scalar(select(func.count()).select_from(Permission)) == 8
-    assert db_session.scalar(select(func.count()).select_from(RolePermission)) == 25
-    assert db_session.scalar(select(func.count()).select_from(RoleDataScope)) == 25
+    assert db_session.scalar(select(func.count()).select_from(Permission)) == 13
+    assert db_session.scalar(select(func.count()).select_from(RolePermission)) == 30
+    assert db_session.scalar(select(func.count()).select_from(RoleDataScope)) == 30
 
     repairers = set()
     for username in ("lisi", "zhaoliu"):

@@ -1,0 +1,4 @@
+{% extends "base.html" %}{% block content %}
+<section class="page-intro"><div><h2>组织结构</h2><p>组织是角色、岗位和数据范围生效的业务边界。</p></div><button class="button primary" disabled title="本轮提供查询演示">新增组织</button></section>
+<section class="panel"><div class="table-wrap"><table><thead><tr><th>组织编码</th><th>组织名称</th><th>类型</th><th>层级路径</th><th>状态</th></tr></thead><tbody>{% for org in organizations %}<tr><td><code>{{ org.org_code }}</code></td><td><strong>{{ org.org_name }}</strong></td><td>{{ org.org_type or '—' }}</td><td>{{ org.org_path }}</td><td><span class="status">{{ '启用' if org.is_active else '停用' }}</span></td></tr>{% endfor %}</tbody></table></div></section>
+{% endblock %}

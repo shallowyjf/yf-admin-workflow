@@ -1,0 +1,4 @@
+{% extends "base.html" %}{% block content %}
+<section class="page-intro"><div><h2>角色授权视图</h2><p>角色聚合稳定权限编码，并为每项权限定义数据范围。</p></div><button class="button primary" disabled title="本轮提供查询演示">新增角色</button></section>
+<section class="card-grid">{% for role in roles %}<article class="entity-card"><div class="entity-title"><span class="role-icon">R</span><span><strong>{{ role.role_name }}</strong><small>{{ role.role_code }} · {{ role.role_type or '业务角色' }}</small></span><span class="status">{{ '启用' if role.is_active else '停用' }}</span></div><p class="meta-label">已授权权限</p><div class="tag-list">{% for link in role.permission_links %}<span>{{ link.permission.permission_code }}</span>{% else %}<small>暂无授权</small>{% endfor %}</div><p class="meta-label">数据范围</p><div class="scope-list">{% for scope in role.data_scopes %}<small>{{ scope.permission_code }} → <b>{{ scope.scope_type }}</b></small>{% endfor %}</div></article>{% endfor %}</section>
+{% endblock %}
