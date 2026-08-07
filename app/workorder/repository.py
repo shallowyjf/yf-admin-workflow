@@ -36,7 +36,7 @@ class WorkOrderRepository:
         work_order_id: int,
         scope: WorkOrderScopeFilter,
         *,
-        include_owner_org: bool = False,
+        include_owner_org: bool = True,
     ) -> WorkOrder | None:
         return self.session.scalar(
             select(WorkOrder).where(
@@ -49,7 +49,9 @@ class WorkOrderRepository:
         return list(
             self.session.scalars(
                 select(WorkOrder)
-                .where(self._scope_condition(scope))
+                .where(
+                    self._scope_condition(scope, include_owner_org=True)
+                )
                 .order_by(WorkOrder.created_at.desc(), WorkOrder.id.desc())
             )
         )
