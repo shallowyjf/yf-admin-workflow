@@ -1,0 +1,12 @@
+# Local research sources and generated artifacts are intentionally kept off GitHub.
+/.agents/
+/output/
+/work/
+/tools/
+/和达内部资料/
+/四家水务信息化系统图片_50张/
+/*.docx
+*.pyc
+__pycache__/
+.pytest_cache/
+.venv/
