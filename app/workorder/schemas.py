@@ -24,6 +24,25 @@ class SubmitWorkOrderRequest(BaseModel):
     comment: str | None = Field(default=None, max_length=1000)
 
 
+class DispatchWorkOrderRequest(BaseModel):
+    target_org_id: int = Field(gt=0)
+    comment: str | None = Field(default=None, max_length=1000)
+
+
+class WorkOrderActionRequest(BaseModel):
+    comment: str | None = Field(default=None, max_length=1000)
+
+
+class SubmitResultRequest(BaseModel):
+    result: str = Field(min_length=1, max_length=4000)
+    comment: str | None = Field(default=None, max_length=1000)
+
+
+class ReviewWorkOrderRequest(BaseModel):
+    decision: str = Field(min_length=1, max_length=20)
+    comment: str | None = Field(default=None, max_length=1000)
+
+
 class WorkOrderResponse(BaseModel):
     id: int
     work_order_no: str

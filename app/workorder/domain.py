@@ -16,6 +16,12 @@ class WorkOrderStatus(StrEnum):
 class WorkOrderActionType(StrEnum):
     CREATE = "CREATE"
     SUBMIT = "SUBMIT"
+    DISPATCH = "DISPATCH"
+    CLAIM = "CLAIM"
+    SUBMIT_RESULT = "SUBMIT_RESULT"
+    REJECT = "REJECT"
+    APPROVE = "APPROVE"
+    CLOSE = "CLOSE"
 
 
 class WorkOrderError(Exception):

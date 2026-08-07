@@ -10,11 +10,12 @@ from app.auth.service import RequestContext
 from app.db.dependencies import get_db_session
 from app.iam.authorization import PermissionService
 from app.iam.repository import IAMRepository
-from app.workflow.domain import WorkflowError
+from app.workflow.domain import TaskAccessDenied, WorkflowError
 from app.workflow.factory import build_workflow_service
 
 from .domain import (
     InvalidWorkOrderTransition,
+    WorkOrderError,
     WorkOrderNotFound,
     WorkOrderNumberExhausted,
     WorkOrderPermissionDenied,
@@ -24,7 +25,11 @@ from .models import WorkOrder, WorkOrderAction
 from .repository import WorkOrderRepository
 from .schemas import (
     CreateWorkOrderRequest,
+    DispatchWorkOrderRequest,
+    ReviewWorkOrderRequest,
+    SubmitResultRequest,
     SubmitWorkOrderRequest,
+    WorkOrderActionRequest,
     WorkOrderActionResponse,
     WorkOrderResponse,
 )
@@ -80,7 +85,7 @@ def _action_response(action: WorkOrderAction) -> WorkOrderActionResponse:
 
 
 def _raise_http(error: Exception) -> None:
-    if isinstance(error, WorkOrderPermissionDenied):
+    if isinstance(error, (TaskAccessDenied, WorkOrderPermissionDenied)):
         status_code = status.HTTP_403_FORBIDDEN
     elif isinstance(error, WorkOrderNotFound):
         status_code = status.HTTP_404_NOT_FOUND
@@ -143,6 +148,99 @@ def submit_work_order(
         WorkOrderPermissionDenied,
         WorkflowError,
     ) as error:
+        _raise_http(error)
+    return _order_response(work_order)
+
+
+@router.post("/{work_order_id}/dispatch", response_model=WorkOrderResponse)
+def dispatch_work_order(
+    work_order_id: int,
+    command: DispatchWorkOrderRequest,
+    context: Annotated[RequestContext, Depends(get_request_context)],
+    service: Annotated[WorkOrderService, Depends(get_work_order_service)],
+) -> WorkOrderResponse:
+    try:
+        work_order = service.dispatch(
+            work_order_id,
+            command.target_org_id,
+            _actor(context),
+            command.comment,
+        )
+    except (WorkOrderError, WorkflowError) as error:
+        _raise_http(error)
+    return _order_response(work_order)
+
+
+@router.post("/{work_order_id}/claim", response_model=WorkOrderResponse)
+def claim_work_order(
+    work_order_id: int,
+    command: WorkOrderActionRequest,
+    context: Annotated[RequestContext, Depends(get_request_context)],
+    service: Annotated[WorkOrderService, Depends(get_work_order_service)],
+) -> WorkOrderResponse:
+    try:
+        work_order = service.claim(
+            work_order_id,
+            _actor(context),
+            command.comment,
+        )
+    except (WorkOrderError, WorkflowError) as error:
+        _raise_http(error)
+    return _order_response(work_order)
+
+
+@router.post("/{work_order_id}/result", response_model=WorkOrderResponse)
+def submit_work_order_result(
+    work_order_id: int,
+    command: SubmitResultRequest,
+    context: Annotated[RequestContext, Depends(get_request_context)],
+    service: Annotated[WorkOrderService, Depends(get_work_order_service)],
+) -> WorkOrderResponse:
+    try:
+        work_order = service.submit_result(
+            work_order_id,
+            _actor(context),
+            command.result,
+            command.comment,
+        )
+    except (WorkOrderError, WorkflowError) as error:
+        _raise_http(error)
+    return _order_response(work_order)
+
+
+@router.post("/{work_order_id}/review", response_model=WorkOrderResponse)
+def review_work_order(
+    work_order_id: int,
+    command: ReviewWorkOrderRequest,
+    context: Annotated[RequestContext, Depends(get_request_context)],
+    service: Annotated[WorkOrderService, Depends(get_work_order_service)],
+) -> WorkOrderResponse:
+    try:
+        work_order = service.review(
+            work_order_id,
+            _actor(context),
+            command.decision,
+            command.comment,
+        )
+    except (WorkOrderError, WorkflowError) as error:
+        _raise_http(error)
+    return _order_response(work_order)
+
+
+@router.post("/{work_order_id}/close", response_model=WorkOrderResponse)
+def close_work_order(
+    work_order_id: int,
+    command: WorkOrderActionRequest,
+    context: Annotated[RequestContext, Depends(get_request_context)],
+    service: Annotated[WorkOrderService, Depends(get_work_order_service)],
+) -> WorkOrderResponse:
+    try:
+        work_order = service.close(
+            work_order_id,
+            _actor(context),
+            command.comment,
+        )
+    except (WorkOrderError, WorkflowError) as error:
         _raise_http(error)
     return _order_response(work_order)
 

@@ -3,13 +3,17 @@
 from collections.abc import Callable
 from datetime import datetime
 
+from .access import TaskAccessService
 from .candidate import CandidateResolverRegistry, CandidateRule, CandidateType
 from .domain import (
+    InvalidWorkflowTaskState,
     NoWorkflowCandidates,
+    TaskAlreadyClaimed,
     WorkflowDefinitionNotFound,
     WorkflowInstanceConflict,
     WorkflowInstanceNotFound,
     WorkflowInstanceStatus,
+    WorkflowTaskNotFound,
     WorkflowTaskStatus,
 )
 from .models import (
@@ -30,11 +34,13 @@ class WorkflowService:
         self,
         repository: WorkflowRepository,
         candidate_resolvers: CandidateResolverRegistry,
+        task_access: TaskAccessService | None = None,
         *,
         clock: Callable[[], datetime] = datetime.now,
     ) -> None:
         self.repository = repository
         self.candidate_resolvers = candidate_resolvers
+        self.task_access = task_access or TaskAccessService()
         self.clock = clock
 
     def start_for_workorder(
@@ -93,6 +99,223 @@ class WorkflowService:
 
     def list_my_tasks(self, user_id: int) -> list[WorkflowTask]:
         return self.repository.list_my_tasks(user_id)
+
+    def dispatch_workorder(
+        self,
+        work_order_id: int,
+        operator_id: int,
+        target_org_id: int,
+    ) -> WorkflowTask:
+        try:
+            current_task = self._current_task(work_order_id, "DISPATCH")
+            self.task_access.require_candidate_or_assignee(
+                current_task,
+                operator_id,
+            )
+            self._finish_task(current_task, operator_id, "COMPLETE")
+            current_task.instance.current_node = "HANDLE"
+            next_task = self._new_task(
+                current_task.instance,
+                "HANDLE",
+                CandidateRule(
+                    CandidateType.ORG_ROLE,
+                    org_id=target_org_id,
+                    role_code="REPAIRER",
+                ),
+                operator_id=operator_id,
+            )
+            self.repository.commit()
+            self.repository.refresh(next_task)
+            return next_task
+        except Exception:
+            self.repository.rollback()
+            raise
+
+    def claim_workorder(
+        self,
+        work_order_id: int,
+        user_id: int,
+    ) -> WorkflowTask:
+        try:
+            task = self._current_task(work_order_id, "HANDLE")
+            self.task_access.require_candidate(task, user_id)
+            claimed_at = self.clock()
+            if not self.repository.claim_if_unassigned(
+                task.id,
+                user_id,
+                claimed_at,
+            ):
+                raise TaskAlreadyClaimed(f"task already claimed: {task.id}")
+            self.repository.add(
+                WorkflowTaskHistory(
+                    task_id=task.id,
+                    action="CLAIM",
+                    operator_id=user_id,
+                    payload_json={"assignee_id": user_id},
+                )
+            )
+            self.repository.commit()
+            self.repository.refresh(task)
+            return task
+        except Exception:
+            self.repository.rollback()
+            raise
+
+    def submit_workorder_result(
+        self,
+        work_order_id: int,
+        operator_id: int,
+        review_org_id: int,
+        payload: dict | None = None,
+    ) -> WorkflowTask:
+        try:
+            current_task = self._current_task(work_order_id, "HANDLE")
+            self.task_access.require_assignee(current_task, operator_id)
+            self._finish_task(
+                current_task,
+                operator_id,
+                "COMPLETE",
+                payload,
+            )
+            current_task.instance.current_node = "REVIEW"
+            next_task = self._new_task(
+                current_task.instance,
+                "REVIEW",
+                CandidateRule(
+                    CandidateType.ORG_ROLE,
+                    org_id=review_org_id,
+                    role_code="REVIEWER",
+                ),
+                operator_id=operator_id,
+            )
+            self.repository.commit()
+            self.repository.refresh(next_task)
+            return next_task
+        except Exception:
+            self.repository.rollback()
+            raise
+
+    def review_workorder(
+        self,
+        work_order_id: int,
+        operator_id: int,
+        decision: str,
+        original_assignee_id: int | None,
+    ) -> WorkflowTask | None:
+        try:
+            current_task = self._current_task(work_order_id, "REVIEW")
+            self.task_access.require_candidate_or_assignee(
+                current_task,
+                operator_id,
+            )
+            normalized_decision = decision.strip().upper()
+            if normalized_decision == "APPROVE":
+                self._finish_task(
+                    current_task,
+                    operator_id,
+                    "COMPLETE",
+                    {"decision": normalized_decision},
+                )
+                current_task.instance.status = WorkflowInstanceStatus.COMPLETED.value
+                current_task.instance.current_node = "END"
+                current_task.instance.completed_at = self.clock()
+                next_task = None
+            elif normalized_decision == "REJECT":
+                if original_assignee_id is None:
+                    raise InvalidWorkflowTaskState(
+                        "cannot return work order without original assignee"
+                    )
+                self._finish_task(
+                    current_task,
+                    operator_id,
+                    "RETURN",
+                    {"decision": normalized_decision},
+                )
+                current_task.instance.current_node = "HANDLE"
+                next_task = self._new_assigned_task(
+                    current_task.instance,
+                    "HANDLE",
+                    original_assignee_id,
+                    operator_id,
+                )
+            else:
+                raise InvalidWorkflowTaskState(
+                    f"unsupported review decision: {decision}"
+                )
+            self.repository.commit()
+            if next_task is not None:
+                self.repository.refresh(next_task)
+            return next_task
+        except Exception:
+            self.repository.rollback()
+            raise
+
+    def _current_task(
+        self,
+        work_order_id: int,
+        task_type: str,
+    ) -> WorkflowTask:
+        task = self.repository.get_current_task_for_business(
+            self.BUSINESS_TYPE,
+            work_order_id,
+            task_type,
+        )
+        if task is None:
+            raise WorkflowTaskNotFound(
+                f"active {task_type} task not found for work order: {work_order_id}"
+            )
+        return task
+
+    def _finish_task(
+        self,
+        task: WorkflowTask,
+        operator_id: int,
+        history_action: str,
+        payload: dict | None = None,
+    ) -> None:
+        if task.status not in {
+            WorkflowTaskStatus.PENDING.value,
+            WorkflowTaskStatus.CLAIMED.value,
+        }:
+            raise InvalidWorkflowTaskState(
+                f"cannot finish task {task.id} from status {task.status}"
+            )
+        task.status = WorkflowTaskStatus.COMPLETED.value
+        task.completed_at = self.clock()
+        self.repository.add(
+            WorkflowTaskHistory(
+                task_id=task.id,
+                action=history_action,
+                operator_id=operator_id,
+                payload_json=payload,
+            )
+        )
+
+    def _new_assigned_task(
+        self,
+        instance: WorkflowInstance,
+        task_type: str,
+        assignee_id: int,
+        operator_id: int,
+    ) -> WorkflowTask:
+        task = self._new_task(
+            instance,
+            task_type,
+            CandidateRule(CandidateType.USER, user_id=assignee_id),
+            operator_id=operator_id,
+        )
+        task.status = WorkflowTaskStatus.CLAIMED.value
+        task.assignee_id = assignee_id
+        task.claimed_at = self.clock()
+        self.repository.add(
+            WorkflowTaskHistory(
+                task_id=task.id,
+                action="ASSIGN",
+                operator_id=operator_id,
+                payload_json={"assignee_id": assignee_id},
+            )
+        )
+        return task
 
     def _new_instance(
         self,

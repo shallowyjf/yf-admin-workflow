@@ -1,6 +1,8 @@
 """Workflow persistence operations."""
 
-from sqlalchemy import or_, select
+from datetime import datetime
+
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from .domain import WorkflowTaskStatus
@@ -72,6 +74,58 @@ class WorkflowRepository:
     def get_instance(self, instance_id: int) -> WorkflowInstance | None:
         return self.session.get(WorkflowInstance, instance_id)
 
+    def get_current_task_for_business(
+        self,
+        business_type: str,
+        business_id: int,
+        task_type: str,
+    ) -> WorkflowTask | None:
+        return self.session.scalar(
+            select(WorkflowTask)
+            .join(
+                WorkflowInstance,
+                WorkflowInstance.id == WorkflowTask.instance_id,
+            )
+            .where(
+                WorkflowInstance.business_type == business_type,
+                WorkflowInstance.business_id == business_id,
+                WorkflowTask.task_type == task_type,
+                WorkflowTask.status.in_(
+                    [
+                        WorkflowTaskStatus.PENDING.value,
+                        WorkflowTaskStatus.CLAIMED.value,
+                    ]
+                ),
+            )
+            .options(
+                joinedload(WorkflowTask.instance),
+                selectinload(WorkflowTask.candidates),
+            )
+            .order_by(WorkflowTask.id.desc())
+        )
+
+    def claim_if_unassigned(
+        self,
+        task_id: int,
+        user_id: int,
+        claimed_at: datetime,
+    ) -> bool:
+        result = self.session.execute(
+            update(WorkflowTask)
+            .where(
+                WorkflowTask.id == task_id,
+                WorkflowTask.status == WorkflowTaskStatus.PENDING.value,
+                WorkflowTask.assignee_id.is_(None),
+            )
+            .values(
+                status=WorkflowTaskStatus.CLAIMED.value,
+                assignee_id=user_id,
+                claimed_at=claimed_at,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        return result.rowcount == 1
+
     def list_my_tasks(self, user_id: int) -> list[WorkflowTask]:
         statement = (
             select(WorkflowTask)
@@ -81,16 +135,16 @@ class WorkflowRepository:
                 WorkflowTaskCandidate.task_id == WorkflowTask.id,
             )
             .where(
-                WorkflowTask.status.in_(
-                    [
-                        WorkflowTaskStatus.PENDING.value,
-                        WorkflowTaskStatus.CLAIMED.value,
-                    ]
-                ),
                 or_(
-                    WorkflowTask.assignee_id == user_id,
-                    WorkflowTaskCandidate.resolved_user_id == user_id,
-                ),
+                    and_(
+                        WorkflowTask.status == WorkflowTaskStatus.PENDING.value,
+                        WorkflowTaskCandidate.resolved_user_id == user_id,
+                    ),
+                    and_(
+                        WorkflowTask.status == WorkflowTaskStatus.CLAIMED.value,
+                        WorkflowTask.assignee_id == user_id,
+                    ),
+                )
             )
             .options(
                 joinedload(WorkflowTask.instance),

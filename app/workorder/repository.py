@@ -35,11 +35,13 @@ class WorkOrderRepository:
         self,
         work_order_id: int,
         scope: WorkOrderScopeFilter,
+        *,
+        include_owner_org: bool = False,
     ) -> WorkOrder | None:
         return self.session.scalar(
             select(WorkOrder).where(
                 WorkOrder.id == work_order_id,
-                self._scope_condition(scope),
+                self._scope_condition(scope, include_owner_org=include_owner_org),
             )
         )
 
@@ -69,12 +71,23 @@ class WorkOrderRepository:
         )
 
     @staticmethod
-    def _scope_condition(scope: WorkOrderScopeFilter):
+    def _scope_condition(
+        scope: WorkOrderScopeFilter,
+        *,
+        include_owner_org: bool = False,
+    ):
         if scope.all_data:
             return true()
         conditions = []
         if scope.org_ids:
-            conditions.append(WorkOrder.current_org_id.in_(scope.org_ids))
+            organization_conditions = [
+                WorkOrder.current_org_id.in_(scope.org_ids)
+            ]
+            if include_owner_org:
+                organization_conditions.append(
+                    WorkOrder.owner_org_id.in_(scope.org_ids)
+                )
+            conditions.append(or_(*organization_conditions))
         if scope.self_user_id is not None:
             conditions.append(
                 or_(

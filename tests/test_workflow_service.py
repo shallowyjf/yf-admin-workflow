@@ -1,14 +1,18 @@
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.db.base import Base
+from app.db.session import Database
 from app.iam.authorization import PermissionService
 from app.iam.identity import IdentityQueryService
 from app.iam.repository import IAMRepository
 from app.iam.seed import seed_iam
 from app.iam.service import IAMService
+from app.workflow.access import TaskAccessService
 from app.workflow.candidate import (
     CandidateResolverRegistry,
     CandidateRule,
@@ -16,6 +20,7 @@ from app.workflow.candidate import (
 )
 from app.workflow.domain import (
     NoWorkflowCandidates,
+    TaskAccessDenied,
     WorkflowDefinitionNotFound,
     WorkflowInstanceConflict,
 )
@@ -228,3 +233,139 @@ def test_submit_rolls_back_when_workflow_cannot_start(
         action.action_type
         for action in work_order_repository.list_actions(work_order.id)
     ] == ["CREATE"]
+
+
+def test_task_access_separates_candidate_and_assignee_rules(
+    workflow_environment: tuple[IAMService, WorkflowService],
+) -> None:
+    iam_service, workflow_service = workflow_environment
+    wangwu_id = _user_id(iam_service, "wangwu")
+    lisi_id = _user_id(iam_service, "lisi")
+    instance = workflow_service.start_for_workorder(2001, wangwu_id)
+    task = workflow_service.create_task(
+        instance.id,
+        "HANDLE",
+        CandidateRule(CandidateType.USER, user_id=lisi_id),
+    )
+    task = workflow_service.repository.get_current_task_for_business(
+        "WORK_ORDER",
+        2001,
+        "HANDLE",
+    )
+    assert task is not None
+    access = TaskAccessService()
+
+    access.require_candidate(task, lisi_id)
+    with pytest.raises(TaskAccessDenied):
+        access.require_candidate(task, wangwu_id)
+    with pytest.raises(TaskAccessDenied):
+        access.require_assignee(task, lisi_id)
+
+
+def test_atomic_claim_allows_only_one_preloaded_candidate(
+    tmp_path: Path,
+) -> None:
+    database = Database(f"sqlite:///{(tmp_path / 'claim.db').as_posix()}")
+    Base.metadata.create_all(database.engine)
+    try:
+        with database.session_factory() as setup_session:
+            iam_repository = IAMRepository(setup_session)
+            iam_service = IAMService(iam_repository)
+            seed_iam(iam_service)
+            workflow_repository = WorkflowRepository(setup_session)
+            seed_workflow(workflow_repository)
+            workflow_service = WorkflowService(
+                workflow_repository,
+                CandidateResolverRegistry.default(
+                    IdentityQueryService(iam_repository)
+                ),
+            )
+            wangwu_id = _user_id(iam_service, "wangwu")
+            pipe_org_id = _org_id(iam_service, "PIPE_OPERATION")
+            lisi_id = _user_id(iam_service, "lisi")
+            zhaoliu_id = _user_id(iam_service, "zhaoliu")
+            workflow_service.start_submitted_workorder(2002, wangwu_id)
+            workflow_service.dispatch_workorder(
+                2002,
+                wangwu_id,
+                pipe_org_id,
+            )
+
+        with (
+            database.session_factory() as first_session,
+            database.session_factory() as second_session,
+        ):
+            first_repository = WorkflowRepository(first_session)
+            second_repository = WorkflowRepository(second_session)
+            first_task = first_repository.get_current_task_for_business(
+                "WORK_ORDER",
+                2002,
+                "HANDLE",
+            )
+            second_task = second_repository.get_current_task_for_business(
+                "WORK_ORDER",
+                2002,
+                "HANDLE",
+            )
+            assert first_task is not None and second_task is not None
+            assert first_task.id == second_task.id
+
+            assert first_repository.claim_if_unassigned(
+                first_task.id,
+                lisi_id,
+                datetime(2026, 8, 7, 12, 0),
+            )
+            first_repository.commit()
+            assert not second_repository.claim_if_unassigned(
+                second_task.id,
+                zhaoliu_id,
+                datetime(2026, 8, 7, 12, 0),
+            )
+            second_repository.rollback()
+    finally:
+        database.dispose()
+
+
+def test_task_actions_record_claim_complete_return_and_assignment_history(
+    workflow_environment: tuple[IAMService, WorkflowService],
+    db_session: Session,
+) -> None:
+    iam_service, workflow_service = workflow_environment
+    wangwu_id = _user_id(iam_service, "wangwu")
+    lisi_id = _user_id(iam_service, "lisi")
+    pipe_org_id = _org_id(iam_service, "PIPE_OPERATION")
+    dispatch_org_id = _org_id(iam_service, "DISPATCH_CENTER")
+    workflow_service.start_submitted_workorder(2003, wangwu_id)
+    workflow_service.dispatch_workorder(2003, wangwu_id, pipe_org_id)
+    workflow_service.claim_workorder(2003, lisi_id)
+    workflow_service.submit_workorder_result(
+        2003,
+        lisi_id,
+        dispatch_org_id,
+        {"result": "fixed"},
+    )
+
+    returned_task = workflow_service.review_workorder(
+        2003,
+        wangwu_id,
+        "REJECT",
+        lisi_id,
+    )
+
+    assert returned_task is not None
+    assert returned_task.status == "CLAIMED"
+    assert returned_task.assignee_id == lisi_id
+    actions = db_session.scalars(
+        select(WorkflowTaskHistory.action).order_by(WorkflowTaskHistory.id)
+    ).all()
+    assert actions == [
+        "CREATE",
+        "COMPLETE",
+        "CREATE",
+        "CLAIM",
+        "COMPLETE",
+        "CREATE",
+        "RETURN",
+        "CREATE",
+        "ASSIGN",
+    ]

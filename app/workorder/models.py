@@ -10,7 +10,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 from app.db.mixins import IdTimestampMixin
 
-from .domain import InvalidWorkOrderTransition, WorkOrderStatus
+from .domain import WorkOrderActionType, WorkOrderStatus
+from .state_machine import WorkOrderStateMachine
 
 
 class WorkOrder(IdTimestampMixin, Base):
@@ -64,12 +65,41 @@ class WorkOrder(IdTimestampMixin, Base):
     )
 
     def submit(self) -> tuple[str, str]:
-        if self.status != WorkOrderStatus.DRAFT.value:
-            raise InvalidWorkOrderTransition(
-                f"cannot submit work order from status {self.status}"
-            )
+        return self._transition(WorkOrderActionType.SUBMIT)
+
+    def dispatch(self, target_org_id: int) -> tuple[str, str]:
+        transition = self._transition(WorkOrderActionType.DISPATCH)
+        self.current_org_id = target_org_id
+        self.current_assignee_id = None
+        return transition
+
+    def claim(self, user_id: int) -> tuple[str, str]:
+        transition = self._transition(WorkOrderActionType.CLAIM)
+        self.current_assignee_id = user_id
+        return transition
+
+    def submit_result(self) -> tuple[str, str]:
+        return self._transition(WorkOrderActionType.SUBMIT_RESULT)
+
+    def reject(self) -> tuple[str, str]:
+        return self._transition(WorkOrderActionType.REJECT)
+
+    def approve(self, occurred_at: datetime) -> tuple[str, str]:
+        transition = self._transition(WorkOrderActionType.APPROVE)
+        self.completed_at = occurred_at
+        return transition
+
+    def close(self, occurred_at: datetime) -> tuple[str, str]:
+        transition = self._transition(WorkOrderActionType.CLOSE)
+        self.closed_at = occurred_at
+        return transition
+
+    def _transition(
+        self,
+        action: WorkOrderActionType,
+    ) -> tuple[str, str]:
         previous_status = self.status
-        self.status = WorkOrderStatus.PENDING_DISPATCH.value
+        self.status = WorkOrderStateMachine.transition(self.status, action).value
         return previous_status, self.status
 
 

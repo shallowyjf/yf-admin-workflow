@@ -35,12 +35,21 @@ def work_order_client(tmp_path: Path) -> Iterator[TestClient]:
         yield client
 
 
-def _login(client: TestClient, username: str) -> None:
+def _login(client: TestClient, username: str) -> dict:
     response = client.post(
         "/auth/login",
         json={"username": username, "password": DEMO_INITIAL_PASSWORD},
     )
     assert response.status_code == 200
+    return response.json()
+
+
+def _org_id(profile: dict, org_code: str) -> int:
+    return next(
+        organization["id"]
+        for organization in profile["organizations"]
+        if organization["org_code"] == org_code
+    )
 
 
 def _create(client: TestClient, title: str = "DMA 分区压力异常"):
@@ -120,3 +129,127 @@ def test_api_enforces_create_permission_and_view_data_scope(
     visible = work_order_client.get("/api/workorders")
     assert visible.status_code == 200
     assert [item["id"] for item in visible.json()] == [created["id"]]
+
+
+def test_i08_task_actions_enforce_access_and_state_transitions(
+    work_order_client: TestClient,
+) -> None:
+    wangwu_profile = _login(work_order_client, "wangwu")
+    pipe_org_id = _org_id(wangwu_profile, "PIPE_OPERATION")
+    created = _create(work_order_client, "I08 任务动作").json()
+    work_order_id = created["id"]
+    assert (
+        work_order_client.post(
+            f"/api/workorders/{work_order_id}/submit",
+            json={},
+        ).status_code
+        == 200
+    )
+
+    _login(work_order_client, "admin")
+    assert (
+        work_order_client.post(
+            f"/api/workorders/{work_order_id}/dispatch",
+            json={"target_org_id": pipe_org_id},
+        ).status_code
+        == 403
+    )
+
+    _login(work_order_client, "wangwu")
+    dispatched = work_order_client.post(
+        f"/api/workorders/{work_order_id}/dispatch",
+        json={"target_org_id": pipe_org_id, "comment": "派给管网运行部"},
+    )
+    assert dispatched.status_code == 200
+    assert dispatched.json()["status"] == "PENDING_CLAIM"
+    assert dispatched.json()["current_org_id"] == pipe_org_id
+
+    _login(work_order_client, "admin")
+    assert (
+        work_order_client.post(
+            f"/api/workorders/{work_order_id}/claim",
+            json={},
+        ).status_code
+        == 403
+    )
+
+    lisi_profile = _login(work_order_client, "lisi")
+    lisi_id = lisi_profile["user_id"]
+    claimed = work_order_client.post(
+        f"/api/workorders/{work_order_id}/claim",
+        json={"comment": "李四认领"},
+    )
+    assert claimed.status_code == 200
+    assert claimed.json()["status"] == "PROCESSING"
+    assert claimed.json()["current_assignee_id"] == lisi_id
+
+    _login(work_order_client, "zhaoliu")
+    assert work_order_client.get("/api/tasks/mine").json() == []
+    assert (
+        work_order_client.post(
+            f"/api/workorders/{work_order_id}/claim",
+            json={},
+        ).status_code
+        == 409
+    )
+    assert (
+        work_order_client.post(
+            f"/api/workorders/{work_order_id}/result",
+            json={"result": "非办理人提交"},
+        ).status_code
+        == 403
+    )
+
+    _login(work_order_client, "lisi")
+    submitted_result = work_order_client.post(
+        f"/api/workorders/{work_order_id}/result",
+        json={"result": "已修复漏点", "comment": "等待复核"},
+    )
+    assert submitted_result.status_code == 200
+    assert submitted_result.json()["status"] == "PENDING_REVIEW"
+
+    _login(work_order_client, "admin")
+    assert (
+        work_order_client.post(
+            f"/api/workorders/{work_order_id}/review",
+            json={"decision": "APPROVE"},
+        ).status_code
+        == 403
+    )
+
+    _login(work_order_client, "wangwu")
+    rejected = work_order_client.post(
+        f"/api/workorders/{work_order_id}/review",
+        json={"decision": "REJECT", "comment": "补充处理结果"},
+    )
+    assert rejected.status_code == 200
+    assert rejected.json()["status"] == "PROCESSING"
+
+    _login(work_order_client, "lisi")
+    returned_tasks = work_order_client.get("/api/tasks/mine").json()
+    assert len(returned_tasks) == 1
+    assert returned_tasks[0]["status"] == "CLAIMED"
+    assert returned_tasks[0]["assignee_id"] == lisi_id
+    assert (
+        work_order_client.post(
+            f"/api/workorders/{work_order_id}/result",
+            json={"result": "已补充现场照片"},
+        ).status_code
+        == 200
+    )
+
+    _login(work_order_client, "wangwu")
+    approved = work_order_client.post(
+        f"/api/workorders/{work_order_id}/review",
+        json={"decision": "APPROVE"},
+    )
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "COMPLETED"
+    closed = work_order_client.post(
+        f"/api/workorders/{work_order_id}/close",
+        json={"comment": "关闭工单"},
+    )
+    assert closed.status_code == 200
+    assert closed.json()["status"] == "CLOSED"
+    assert closed.json()["completed_at"] is not None
+    assert closed.json()["closed_at"] is not None

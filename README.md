@@ -1,6 +1,6 @@
 # 统一权限与流程工单平台 Python Demo
 
-这是正式系统前的可运行架构原型，用于逐轮验证 IAM、功能权限、数据范围、CandidateResolver、WorkflowTask 与 WorkOrder 的领域边界。当前代码完成 **I07：流程实例与待办任务**。
+这是正式系统前的可运行架构原型，用于逐轮验证 IAM、功能权限、数据范围、CandidateResolver、WorkflowTask 与 WorkOrder 的领域边界。当前代码完成 **I08：状态机与任务动作**。
 
 ## 环境
 
@@ -43,6 +43,6 @@ Copy-Item .env.example .env
 
 ## 当前边界
 
-I07 已实现 `WORK_ORDER_STANDARD` 流程定义、流程实例、人工任务、候选人快照、任务历史与“我的任务”查询。工单提交会在同一事务中执行 `DRAFT → PENDING_DISPATCH`，创建一条 `RUNNING` 流程实例和一个 `PENDING` 的 `DISPATCH` 待办。
+I08 已实现集中式状态机，以及派单、原子认领、提交处理结果、复核通过/退回和关闭动作。功能权限、DataScope、对象状态规则与 TaskAccess 分别判定；候选任务只能被一个用户认领，其他请求返回 409。
 
-Demo 用户为 `admin`、`wangwu`、`zhangsan`、`lisi`、`zhaoliu`，初始密码统一为 `Demo@123456`，仅限本地演示。候选人解析演示可运行 `.\.venv\Scripts\python.exe -m app.demo.candidate_demo`。I07 暂不提供认领、完成、退回和非法状态迁移，这些属于 I08。设计约束见 `AI_CODING_RULES.md`，本轮验收见 `docs/iterations/I07.md`。
+Demo 用户为 `admin`、`wangwu`、`zhangsan`、`lisi`、`zhaoliu`，初始密码统一为 `Demo@123456`，仅限本地演示。候选人解析演示可运行 `.\.venv\Scripts\python.exe -m app.demo.candidate_demo`。I09 将把这些动作固化为标准 DMA 完整 E2E 脚本与完整时间线验收。设计约束见 `AI_CODING_RULES.md`，本轮验收见 `docs/iterations/I08.md`。
