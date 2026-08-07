@@ -7,6 +7,7 @@ from sqlalchemy import engine_from_config, pool
 
 import app.auth.models  # noqa: F401
 import app.iam.models  # noqa: F401
+import app.workflow.models  # noqa: F401
 import app.workorder.models  # noqa: F401
 from app.db.base import Base
 from app.db.session import prepare_database_directory

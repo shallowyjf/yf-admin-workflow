@@ -3,6 +3,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Protocol
 
 from app.iam.authorization import PermissionService, WorkOrderScopeFilter
 
@@ -40,6 +41,14 @@ class CreateWorkOrderCommand:
     due_at: datetime | None = None
 
 
+class WorkflowSubmissionPort(Protocol):
+    def start_submitted_workorder(
+        self,
+        work_order_id: int,
+        initiator_id: int,
+    ) -> object: ...
+
+
 class WorkOrderService:
     VIEW_PERMISSION = "workorder:view"
     CREATE_PERMISSION = "workorder:create"
@@ -48,11 +57,13 @@ class WorkOrderService:
         self,
         repository: WorkOrderRepository,
         permission_service: PermissionService,
+        workflow_submission: WorkflowSubmissionPort | None = None,
         *,
         clock: Callable[[], datetime] = datetime.now,
     ) -> None:
         self.repository = repository
         self.permission_service = permission_service
+        self.workflow_submission = workflow_submission
         self.number_service = WorkOrderNumberService(repository)
         self.clock = clock
 
@@ -130,7 +141,13 @@ class WorkOrderService:
                 comment=comment,
             )
         )
-        self.repository.commit()
+        if self.workflow_submission is None:
+            self.repository.commit()
+        else:
+            self.workflow_submission.start_submitted_workorder(
+                work_order.id,
+                actor.user_id,
+            )
         self.repository.refresh(work_order)
         return work_order
 

@@ -1,0 +1,101 @@
+"""Workflow persistence operations."""
+
+from sqlalchemy import or_, select
+from sqlalchemy.orm import Session, joinedload, selectinload
+
+from .domain import WorkflowTaskStatus
+from .models import (
+    WorkflowDefinition,
+    WorkflowInstance,
+    WorkflowTask,
+    WorkflowTaskCandidate,
+)
+
+
+class WorkflowRepository:
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def add(self, entity: object) -> None:
+        self.session.add(entity)
+
+    def flush(self) -> None:
+        self.session.flush()
+
+    def commit(self) -> None:
+        try:
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            raise
+
+    def refresh(self, entity: object) -> None:
+        self.session.refresh(entity)
+
+    def rollback(self) -> None:
+        self.session.rollback()
+
+    def get_active_definition(self, code: str) -> WorkflowDefinition | None:
+        return self.session.scalar(
+            select(WorkflowDefinition)
+            .where(
+                WorkflowDefinition.code == code,
+                WorkflowDefinition.is_active.is_(True),
+            )
+            .order_by(WorkflowDefinition.version.desc())
+        )
+
+    def get_definition(
+        self,
+        code: str,
+        version: int,
+    ) -> WorkflowDefinition | None:
+        return self.session.scalar(
+            select(WorkflowDefinition).where(
+                WorkflowDefinition.code == code,
+                WorkflowDefinition.version == version,
+            )
+        )
+
+    def get_instance_for_business(
+        self,
+        business_type: str,
+        business_id: int,
+    ) -> WorkflowInstance | None:
+        return self.session.scalar(
+            select(WorkflowInstance).where(
+                WorkflowInstance.business_type == business_type,
+                WorkflowInstance.business_id == business_id,
+            )
+        )
+
+    def get_instance(self, instance_id: int) -> WorkflowInstance | None:
+        return self.session.get(WorkflowInstance, instance_id)
+
+    def list_my_tasks(self, user_id: int) -> list[WorkflowTask]:
+        statement = (
+            select(WorkflowTask)
+            .join(WorkflowInstance, WorkflowInstance.id == WorkflowTask.instance_id)
+            .outerjoin(
+                WorkflowTaskCandidate,
+                WorkflowTaskCandidate.task_id == WorkflowTask.id,
+            )
+            .where(
+                WorkflowTask.status.in_(
+                    [
+                        WorkflowTaskStatus.PENDING.value,
+                        WorkflowTaskStatus.CLAIMED.value,
+                    ]
+                ),
+                or_(
+                    WorkflowTask.assignee_id == user_id,
+                    WorkflowTaskCandidate.resolved_user_id == user_id,
+                ),
+            )
+            .options(
+                joinedload(WorkflowTask.instance),
+                selectinload(WorkflowTask.candidates),
+            )
+            .order_by(WorkflowTask.created_at.desc(), WorkflowTask.id.desc())
+        )
+        return list(self.session.scalars(statement).unique())

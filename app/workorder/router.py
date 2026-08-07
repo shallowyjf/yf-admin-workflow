@@ -10,6 +10,8 @@ from app.auth.service import RequestContext
 from app.db.dependencies import get_db_session
 from app.iam.authorization import PermissionService
 from app.iam.repository import IAMRepository
+from app.workflow.domain import WorkflowError
+from app.workflow.factory import build_workflow_service
 
 from .domain import (
     InvalidWorkOrderTransition,
@@ -37,6 +39,7 @@ def get_work_order_service(
     return WorkOrderService(
         WorkOrderRepository(session),
         PermissionService(IAMRepository(session)),
+        build_workflow_service(session),
     )
 
 
@@ -138,6 +141,7 @@ def submit_work_order(
         InvalidWorkOrderTransition,
         WorkOrderNotFound,
         WorkOrderPermissionDenied,
+        WorkflowError,
     ) as error:
         _raise_http(error)
     return _order_response(work_order)

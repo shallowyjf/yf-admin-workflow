@@ -11,6 +11,8 @@ from app.iam.repository import IAMRepository
 from app.iam.seed import DEMO_INITIAL_PASSWORD, seed_iam
 from app.iam.service import IAMService
 from app.main import create_app
+from app.workflow.repository import WorkflowRepository
+from app.workflow.seed import seed_workflow
 
 
 @pytest.fixture()
@@ -20,6 +22,7 @@ def work_order_client(tmp_path: Path) -> Iterator[TestClient]:
     Base.metadata.create_all(database.engine)
     with database.session_factory() as session:
         seed_iam(IAMService(IAMRepository(session)))
+        seed_workflow(WorkflowRepository(session))
     database.dispose()
 
     settings = Settings(
@@ -57,6 +60,7 @@ def _create(client: TestClient, title: str = "DMA 分区压力异常"):
 
 def test_work_order_api_requires_login(work_order_client: TestClient) -> None:
     assert work_order_client.get("/api/workorders").status_code == 401
+    assert work_order_client.get("/api/tasks/mine").status_code == 401
     assert _create(work_order_client).status_code == 401
 
 
@@ -80,6 +84,13 @@ def test_create_submit_list_detail_and_timeline(work_order_client: TestClient) -
 
     assert submitted_response.status_code == 200
     assert submitted_response.json()["status"] == "PENDING_DISPATCH"
+    tasks = work_order_client.get("/api/tasks/mine").json()
+    assert len(tasks) == 1
+    assert tasks[0]["business_id"] == work_order_id
+    assert tasks[0]["task_type"] == "DISPATCH"
+    assert tasks[0]["status"] == "PENDING"
+    assert tasks[0]["assignee_id"] is None
+    assert tasks[0]["is_candidate"] is True
     timeline = work_order_client.get(
         f"/api/workorders/{work_order_id}/timeline"
     ).json()

@@ -1,6 +1,6 @@
 # 统一权限与流程工单平台 Python Demo
 
-这是正式系统前的可运行架构原型，用于逐轮验证 IAM、功能权限、数据范围、CandidateResolver、WorkflowTask 与 WorkOrder 的领域边界。当前代码完成 **I06：WorkOrder 领域**，尚未实现流程实例或任务。
+这是正式系统前的可运行架构原型，用于逐轮验证 IAM、功能权限、数据范围、CandidateResolver、WorkflowTask 与 WorkOrder 的领域边界。当前代码完成 **I07：流程实例与待办任务**。
 
 ## 环境
 
@@ -19,6 +19,7 @@ python -m venv .venv
 Copy-Item .env.example .env
 .\.venv\Scripts\python.exe -m alembic upgrade head
 .\.venv\Scripts\python.exe -m app.iam.seed
+.\.venv\Scripts\python.exe -m app.workflow.seed
 ```
 
 ## 运行
@@ -42,6 +43,6 @@ Copy-Item .env.example .env
 
 ## 当前边界
 
-I06 已实现工单主表、动作时间线、业务编号、创建/提交、列表/详情/时间线 API，以及落到 SQLAlchemy 查询的真实 DataScope。工单只在领域实体内部执行 `DRAFT → PENDING_DISPATCH`，Router、Service 和 Repository 不直接赋值状态。
+I07 已实现 `WORK_ORDER_STANDARD` 流程定义、流程实例、人工任务、候选人快照、任务历史与“我的任务”查询。工单提交会在同一事务中执行 `DRAFT → PENDING_DISPATCH`，创建一条 `RUNNING` 流程实例和一个 `PENDING` 的 `DISPATCH` 待办。
 
-Demo 用户为 `admin`、`wangwu`、`zhangsan`、`lisi`、`zhaoliu`，初始密码统一为 `Demo@123456`，仅限本地演示。候选人解析演示可运行 `.\.venv\Scripts\python.exe -m app.demo.candidate_demo`。流程实例和任务将在后续迭代实现。设计约束见 `AI_CODING_RULES.md`，本轮验收见 `docs/iterations/I06.md`。
+Demo 用户为 `admin`、`wangwu`、`zhangsan`、`lisi`、`zhaoliu`，初始密码统一为 `Demo@123456`，仅限本地演示。候选人解析演示可运行 `.\.venv\Scripts\python.exe -m app.demo.candidate_demo`。I07 暂不提供认领、完成、退回和非法状态迁移，这些属于 I08。设计约束见 `AI_CODING_RULES.md`，本轮验收见 `docs/iterations/I07.md`。
