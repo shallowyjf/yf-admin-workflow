@@ -17,7 +17,7 @@ from .domain import (
 )
 from .models import WorkOrder, WorkOrderAction
 from .numbering import WorkOrderNumberService
-from .repository import WorkOrderRepository
+from .repository import WorkOrderListQuery, WorkOrderPage, WorkOrderRepository
 from .sla import DEFAULT_SLA_POLICIES, SlaCalendar
 
 
@@ -256,6 +256,25 @@ class WorkOrderService:
 
     def list_visible(self, actor: WorkOrderActor) -> list[WorkOrder]:
         return self.repository.list_visible(self._view_scope(actor))
+
+    def search_visible(
+        self,
+        actor: WorkOrderActor,
+        query: WorkOrderListQuery,
+    ) -> WorkOrderPage:
+        if query.page < 1 or not 1 <= query.page_size <= 100:
+            raise WorkOrderValidationError("page must be >= 1 and page_size 1..100")
+        if query.sort_by not in {
+            "created_at",
+            "due_at",
+            "priority",
+            "status",
+            "work_order_no",
+        }:
+            raise WorkOrderValidationError("unsupported sort field")
+        if query.sort_direction not in {"asc", "desc"}:
+            raise WorkOrderValidationError("sort_direction must be asc or desc")
+        return self.repository.search_visible(self._view_scope(actor), query)
 
     def dispatch(
         self,

@@ -1,6 +1,8 @@
 """Persistence for work orders and their action timeline."""
 
-from sqlalchemy import false, func, or_, select, true
+from dataclasses import dataclass
+
+from sqlalchemy import asc, desc, false, func, or_, select, true
 from sqlalchemy.orm import Session
 
 from app.iam.authorization import WorkOrderScopeFilter
@@ -11,6 +13,28 @@ from .models import (
     WorkOrderAttachment,
     WorkOrderSlaPolicy,
 )
+
+
+@dataclass(frozen=True)
+class WorkOrderListQuery:
+    keyword: str | None = None
+    statuses: tuple[str, ...] = ()
+    priorities: tuple[str, ...] = ()
+    sla_statuses: tuple[str, ...] = ()
+    organization_id: int | None = None
+    assignee_id: int | None = None
+    sort_by: str = "created_at"
+    sort_direction: str = "desc"
+    page: int = 1
+    page_size: int = 20
+
+
+@dataclass(frozen=True)
+class WorkOrderPage:
+    items: list[WorkOrder]
+    total: int
+    page: int
+    page_size: int
 
 
 class WorkOrderRepository:
@@ -60,6 +84,61 @@ class WorkOrderRepository:
                 .order_by(WorkOrder.created_at.desc(), WorkOrder.id.desc())
             )
         )
+
+    def search_visible(
+        self,
+        scope: WorkOrderScopeFilter,
+        query: WorkOrderListQuery,
+    ) -> WorkOrderPage:
+        conditions = [self._scope_condition(scope, include_owner_org=True)]
+        keyword = (query.keyword or "").strip()
+        if keyword:
+            pattern = f"%{keyword}%"
+            conditions.append(
+                or_(
+                    WorkOrder.work_order_no.ilike(pattern),
+                    WorkOrder.title.ilike(pattern),
+                    WorkOrder.location.ilike(pattern),
+                )
+            )
+        if query.statuses:
+            conditions.append(WorkOrder.status.in_(query.statuses))
+        if query.priorities:
+            conditions.append(WorkOrder.priority.in_(query.priorities))
+        if query.sla_statuses:
+            conditions.append(WorkOrder.sla_status.in_(query.sla_statuses))
+        if query.organization_id is not None:
+            conditions.append(
+                or_(
+                    WorkOrder.owner_org_id == query.organization_id,
+                    WorkOrder.current_org_id == query.organization_id,
+                )
+            )
+        if query.assignee_id is not None:
+            conditions.append(WorkOrder.current_assignee_id == query.assignee_id)
+
+        sort_columns = {
+            "created_at": WorkOrder.created_at,
+            "due_at": WorkOrder.due_at,
+            "priority": WorkOrder.priority,
+            "status": WorkOrder.status,
+            "work_order_no": WorkOrder.work_order_no,
+        }
+        sort_column = sort_columns.get(query.sort_by, WorkOrder.created_at)
+        order = asc(sort_column) if query.sort_direction == "asc" else desc(sort_column)
+        total = self.session.scalar(
+            select(func.count(WorkOrder.id)).where(*conditions)
+        ) or 0
+        items = list(
+            self.session.scalars(
+                select(WorkOrder)
+                .where(*conditions)
+                .order_by(order, WorkOrder.id.desc())
+                .offset((query.page - 1) * query.page_size)
+                .limit(query.page_size)
+            )
+        )
+        return WorkOrderPage(items, total, query.page, query.page_size)
 
     def list_actions(self, work_order_id: int) -> list[WorkOrderAction]:
         return list(

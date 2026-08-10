@@ -1,7 +1,11 @@
 """Repository for IAM and authorization entities."""
 
-from sqlalchemy import func, select
+from dataclasses import dataclass
+
+from sqlalchemy import asc, desc, func, or_, select
 from sqlalchemy.orm import Session, selectinload
+
+from app.core.pagination import PageResult
 
 from .models import (
     IAMAuditLog,
@@ -16,6 +20,16 @@ from .models import (
     UserOrganizationPosition,
     UserOrganizationRole,
 )
+
+
+@dataclass(frozen=True)
+class IAMListQuery:
+    keyword: str | None = None
+    is_active: bool | None = None
+    sort_by: str = "code"
+    sort_direction: str = "asc"
+    page: int = 1
+    page_size: int = 20
 
 
 class IAMRepository:
@@ -493,4 +507,108 @@ class IAMRepository:
                 .options(selectinload(Permission.role_links))
                 .order_by(Permission.permission_code)
             )
+        )
+
+    def search_organizations(
+        self, query: IAMListQuery
+    ) -> PageResult[Organization]:
+        conditions = []
+        keyword = (query.keyword or "").strip()
+        if keyword:
+            pattern = f"%{keyword}%"
+            conditions.append(
+                or_(
+                    Organization.org_code.ilike(pattern),
+                    Organization.org_name.ilike(pattern),
+                )
+            )
+        if query.is_active is not None:
+            conditions.append(Organization.is_active.is_(query.is_active))
+        sort_columns = {
+            "code": Organization.org_code,
+            "name": Organization.org_name,
+            "sort_no": Organization.sort_no,
+            "created_at": Organization.created_at,
+        }
+        return self._page(Organization, conditions, sort_columns, query)
+
+    def search_users(self, query: IAMListQuery) -> PageResult[User]:
+        conditions = []
+        keyword = (query.keyword or "").strip()
+        if keyword:
+            pattern = f"%{keyword}%"
+            conditions.append(
+                or_(User.username.ilike(pattern), User.display_name.ilike(pattern))
+            )
+        if query.is_active is not None:
+            conditions.append(User.is_active.is_(query.is_active))
+        sort_columns = {
+            "code": User.username,
+            "name": User.display_name,
+            "created_at": User.created_at,
+        }
+        options = (
+            selectinload(User.memberships).selectinload(
+                UserOrganization.organization
+            ),
+            selectinload(User.memberships)
+            .selectinload(UserOrganization.role_links)
+            .selectinload(UserOrganizationRole.role),
+            selectinload(User.memberships)
+            .selectinload(UserOrganization.position_links)
+            .selectinload(UserOrganizationPosition.position),
+        )
+        return self._page(User, conditions, sort_columns, query, options=options)
+
+    def search_roles(self, query: IAMListQuery) -> PageResult[Role]:
+        conditions = []
+        keyword = (query.keyword or "").strip()
+        if keyword:
+            pattern = f"%{keyword}%"
+            conditions.append(
+                or_(Role.role_code.ilike(pattern), Role.role_name.ilike(pattern))
+            )
+        if query.is_active is not None:
+            conditions.append(Role.is_active.is_(query.is_active))
+        sort_columns = {
+            "code": Role.role_code,
+            "name": Role.role_name,
+            "created_at": Role.created_at,
+        }
+        options = (
+            selectinload(Role.permission_links).selectinload(
+                RolePermission.permission
+            ),
+            selectinload(Role.data_scopes),
+        )
+        return self._page(Role, conditions, sort_columns, query, options=options)
+
+    def _page(
+        self,
+        model,
+        conditions: list,
+        sort_columns: dict,
+        query: IAMListQuery,
+        *,
+        options: tuple = (),
+    ) -> PageResult:
+        sort_column = sort_columns.get(query.sort_by, sort_columns["code"])
+        order = asc(sort_column) if query.sort_direction == "asc" else desc(sort_column)
+        total = self.session.scalar(
+            select(func.count(model.id)).where(*conditions)
+        ) or 0
+        statement = (
+            select(model)
+            .where(*conditions)
+            .order_by(order, model.id)
+            .offset((query.page - 1) * query.page_size)
+            .limit(query.page_size)
+        )
+        if options:
+            statement = statement.options(*options)
+        return PageResult(
+            list(self.session.scalars(statement)),
+            total,
+            query.page,
+            query.page_size,
         )

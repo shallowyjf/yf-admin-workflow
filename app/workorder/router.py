@@ -17,6 +17,7 @@ from app.workflow.domain import TaskAccessDenied, WorkflowError
 from app.workflow.factory import build_workflow_service
 
 from .attachment_service import WorkOrderAttachmentService
+from .batch_service import WorkOrderBatchService
 from .domain import (
     InvalidWorkOrderTransition,
     WorkOrderError,
@@ -26,8 +27,11 @@ from .domain import (
     WorkOrderValidationError,
 )
 from .models import WorkOrder, WorkOrderAction
-from .repository import WorkOrderRepository
+from .repository import WorkOrderListQuery, WorkOrderRepository
 from .schemas import (
+    BatchActionResponse,
+    BatchDispatchRequest,
+    BatchUrgeRequest,
     CreateWorkOrderRequest,
     DispatchWorkOrderRequest,
     ReviewWorkOrderRequest,
@@ -39,6 +43,7 @@ from .schemas import (
     WorkOrderActionResponse,
     WorkOrderAttachmentResponse,
     WorkOrderCommentRequest,
+    WorkOrderPageResponse,
     WorkOrderResponse,
 )
 from .service import CreateWorkOrderCommand, WorkOrderActor, WorkOrderService
@@ -64,6 +69,12 @@ def get_attachment_service(
         WorkOrderRepository(session),
         PermissionService(IAMRepository(session)),
     )
+
+
+def get_batch_service(
+    service: Annotated[WorkOrderService, Depends(get_work_order_service)],
+) -> WorkOrderBatchService:
+    return WorkOrderBatchService(service)
 
 
 def _actor(context: RequestContext) -> WorkOrderActor:
@@ -173,7 +184,7 @@ def submit_work_order(
     return _order_response(work_order)
 
 
-@router.post("/{work_order_id}/dispatch", response_model=WorkOrderResponse)
+@router.post("/{work_order_id:int}/dispatch", response_model=WorkOrderResponse)
 def dispatch_work_order(
     work_order_id: int,
     command: DispatchWorkOrderRequest,
@@ -271,7 +282,7 @@ def add_work_order_comment(
 
 
 @router.post(
-    "/{work_order_id}/urge",
+    "/{work_order_id:int}/urge",
     response_model=WorkOrderActionResponse,
     status_code=status.HTTP_201_CREATED,
 )
@@ -302,6 +313,77 @@ def evaluate_work_order_sla(
     except WorkOrderError as error:
         _raise_http(error)
     return SlaEvaluationResponse.model_validate(result, from_attributes=True)
+
+
+@router.get("/search", response_model=WorkOrderPageResponse)
+def search_work_orders(
+    context: Annotated[RequestContext, Depends(get_request_context)],
+    service: Annotated[WorkOrderService, Depends(get_work_order_service)],
+    keyword: str | None = None,
+    status_filter: list[str] | None = None,
+    priority: list[str] | None = None,
+    sla_status: list[str] | None = None,
+    organization_id: int | None = None,
+    assignee_id: int | None = None,
+    sort_by: str = "created_at",
+    sort_direction: str = "desc",
+    page: int = 1,
+    page_size: int = 20,
+) -> WorkOrderPageResponse:
+    try:
+        result = service.search_visible(
+            _actor(context),
+            WorkOrderListQuery(
+                keyword=keyword,
+                statuses=tuple(status_filter or ()),
+                priorities=tuple(priority or ()),
+                sla_statuses=tuple(sla_status or ()),
+                organization_id=organization_id,
+                assignee_id=assignee_id,
+                sort_by=sort_by,
+                sort_direction=sort_direction,
+                page=page,
+                page_size=page_size,
+            ),
+        )
+    except WorkOrderError as error:
+        _raise_http(error)
+    return WorkOrderPageResponse(
+        items=[_order_response(item) for item in result.items],
+        total=result.total,
+        page=result.page,
+        page_size=result.page_size,
+        pages=max(1, (result.total + result.page_size - 1) // result.page_size),
+    )
+
+
+@router.post("/batch/dispatch", response_model=BatchActionResponse)
+def batch_dispatch_work_orders(
+    command: BatchDispatchRequest,
+    context: Annotated[RequestContext, Depends(get_request_context)],
+    service: Annotated[WorkOrderBatchService, Depends(get_batch_service)],
+) -> BatchActionResponse:
+    result = service.dispatch(
+        command.work_order_ids,
+        command.target_org_id,
+        _actor(context),
+        command.comment,
+    )
+    return BatchActionResponse.model_validate(result, from_attributes=True)
+
+
+@router.post("/batch/urge", response_model=BatchActionResponse)
+def batch_urge_work_orders(
+    command: BatchUrgeRequest,
+    context: Annotated[RequestContext, Depends(get_request_context)],
+    service: Annotated[WorkOrderBatchService, Depends(get_batch_service)],
+) -> BatchActionResponse:
+    result = service.urge(
+        command.work_order_ids,
+        _actor(context),
+        command.comment,
+    )
+    return BatchActionResponse.model_validate(result, from_attributes=True)
 
 
 @router.post(

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, quote
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -59,6 +59,8 @@ from app.iam.user_admin_service import (
 )
 from app.notification.repository import NotificationRepository
 from app.notification.service import NotificationNotFound, NotificationService
+from app.operation.repository import SavedViewRepository
+from app.operation.service import SavedViewError, SavedViewService
 from app.workflow.domain import TaskAccessDenied, WorkflowError
 from app.workflow.factory import build_workflow_service
 from app.workflow.repository import WorkflowRepository
@@ -69,7 +71,7 @@ from app.workorder.domain import (
     WorkOrderPermissionDenied,
     WorkOrderValidationError,
 )
-from app.workorder.repository import WorkOrderRepository
+from app.workorder.repository import WorkOrderListQuery, WorkOrderRepository
 from app.workorder.service import (
     CreateWorkOrderCommand,
     WorkOrderActor,
@@ -140,6 +142,7 @@ def get_dashboard_service(
         IAMAuditQueryService(iam_repository, permission_service),
         WorkOrderAttachmentService(work_order_repository, permission_service),
         notification_service,
+        SavedViewService(SavedViewRepository(session)),
     )
 
 
@@ -354,12 +357,113 @@ def work_orders_page(
     identity: Annotated[PageIdentity, Depends(get_page_identity)],
     service: Annotated[DashboardService, Depends(get_dashboard_service)],
 ) -> HTMLResponse:
+    query = WorkOrderListQuery(
+        keyword=request.query_params.get("keyword"),
+        statuses=tuple(
+            item for item in request.query_params.getlist("status") if item
+        ),
+        priorities=tuple(
+            item for item in request.query_params.getlist("priority") if item
+        ),
+        sla_statuses=tuple(
+            item for item in request.query_params.getlist("sla_status") if item
+        ),
+        organization_id=(
+            int(request.query_params["organization_id"])
+            if request.query_params.get("organization_id")
+            else None
+        ),
+        sort_by=request.query_params.get("sort_by", "created_at"),
+        sort_direction=request.query_params.get("sort_direction", "desc"),
+        page=int(request.query_params.get("page", "1")),
+        page_size=int(request.query_params.get("page_size", "20")),
+    )
     try:
-        data = service.work_orders(identity.profile)
-    except WorkOrderError as error:
+        data = service.work_orders(identity.profile, query)
+        data["batch_message"] = request.query_params.get("batch")
+    except (ValueError, WorkOrderError) as error:
         return _friendly_error(request, service, identity, error)
     return _page(
         request, service, identity, "workorders.html", "工单中心", "workorders", data
+    )
+
+
+@router.post(
+    "/ui/workorders/saved-views",
+    include_in_schema=False,
+    response_model=None,
+)
+async def save_work_order_view_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse | RedirectResponse:
+    values = await _form_lists(request)
+    filters = {
+        key: value if len(value) > 1 else value[0]
+        for key, value in values.items()
+        if key
+        in {
+            "keyword",
+            "status",
+            "priority",
+            "sla_status",
+            "organization_id",
+            "sort_by",
+            "sort_direction",
+            "page_size",
+        }
+        and any(value)
+    }
+    try:
+        service.saved_view_service.save(
+            identity.profile.user_id,
+            "WORKORDERS",
+            values.get("view_name", [""])[-1],
+            filters,
+            values.get("is_default", ["false"])[-1] == "true",
+        )
+    except SavedViewError as error:
+        return _friendly_error(request, service, identity, ValueError(str(error)))
+    return RedirectResponse("/workorders", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post(
+    "/ui/workorders/batch",
+    include_in_schema=False,
+    response_model=None,
+)
+async def batch_work_orders_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse | RedirectResponse:
+    values = await _form_lists(request)
+    work_order_ids = [int(item) for item in values.get("work_order_ids", [])]
+    action = values.get("batch_action", [""])[-1]
+    actor = _actor(identity)
+    try:
+        if action == "dispatch":
+            result = service.work_order_batch_service.dispatch(
+                work_order_ids,
+                int(values.get("target_org_id", [""])[-1]),
+                actor,
+                values.get("comment", [""])[-1] or None,
+            )
+        elif action == "urge":
+            result = service.work_order_batch_service.urge(
+                work_order_ids,
+                actor,
+                values.get("comment", [""])[-1],
+            )
+        else:
+            raise ValueError("请选择批量操作")
+    except (ValueError, WorkOrderError, WorkflowError) as error:
+        return _friendly_error(request, service, identity, error)
+    message = f"批量处理完成：成功 {result.succeeded}，失败 {result.failed}"
+    return RedirectResponse(
+        f"/workorders?batch={quote(message)}",
+        status_code=status.HTTP_303_SEE_OTHER,
     )
 
 

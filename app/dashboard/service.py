@@ -1,6 +1,7 @@
 """Read models and UI-only action visibility for server-rendered pages."""
 
 from collections import Counter
+from urllib.parse import urlencode
 
 from app.auth.service import AuthProfile
 from app.iam.admin_service import (
@@ -19,11 +20,14 @@ from app.iam.role_admin_service import RoleAdministrationService
 from app.iam.service import IAMService
 from app.iam.user_admin_service import UserAdministrationService
 from app.notification.service import NotificationService
+from app.operation.service import SavedViewService
 from app.workflow.models import WorkflowTask
 from app.workflow.service import WorkflowService
 from app.workorder.attachment_service import WorkOrderAttachmentService
+from app.workorder.batch_service import WorkOrderBatchService
 from app.workorder.domain import WorkOrderPermissionDenied
 from app.workorder.models import WorkOrder
+from app.workorder.repository import WorkOrderListQuery
 from app.workorder.service import WorkOrderActor, WorkOrderService
 
 from .domain import PageAccessDenied
@@ -79,6 +83,7 @@ class DashboardService:
         iam_audit_query_service: IAMAuditQueryService,
         attachment_service: WorkOrderAttachmentService,
         notification_service: NotificationService,
+        saved_view_service: SavedViewService,
     ) -> None:
         self.iam_service = iam_service
         self.permission_service = permission_service
@@ -92,6 +97,8 @@ class DashboardService:
         self.iam_audit_query_service = iam_audit_query_service
         self.attachment_service = attachment_service
         self.notification_service = notification_service
+        self.saved_view_service = saved_view_service
+        self.work_order_batch_service = WorkOrderBatchService(work_order_service)
 
     def common_context(
         self,
@@ -285,13 +292,61 @@ class DashboardService:
         logs = self.iam_audit_query_service.list_logs(filters, self._iam_actor(profile))
         return {"audit_logs": logs, "audit_filters": filters}
 
-    def work_orders(self, profile: AuthProfile) -> dict:
+    def work_orders(
+        self,
+        profile: AuthProfile,
+        query: WorkOrderListQuery,
+    ) -> dict:
         actor = self._actor(profile)
+        result = self.work_order_service.search_visible(actor, query)
+        saved_views = self.saved_view_service.list(profile.user_id, "WORKORDERS")
+        filter_params: dict[str, object] = {
+            "sort_by": query.sort_by,
+            "sort_direction": query.sort_direction,
+            "page_size": query.page_size,
+        }
+        if query.keyword:
+            filter_params["keyword"] = query.keyword
+        if query.statuses:
+            filter_params["status"] = list(query.statuses)
+        if query.priorities:
+            filter_params["priority"] = list(query.priorities)
+        if query.sla_statuses:
+            filter_params["sla_status"] = list(query.sla_statuses)
+        if query.organization_id is not None:
+            filter_params["organization_id"] = query.organization_id
+        pages = max(1, (result.total + result.page_size - 1) // result.page_size)
         return {
-            "work_orders": self.work_order_service.list_visible(actor),
+            "work_orders": result.items,
+            "work_order_page": result,
+            "list_query": query,
+            "list_filter_params": filter_params,
+            "work_order_pages": pages,
+            "previous_page_href": (
+                f"/workorders?{urlencode({**filter_params, 'page': query.page - 1}, doseq=True)}"
+                if query.page > 1
+                else None
+            ),
+            "next_page_href": (
+                f"/workorders?{urlencode({**filter_params, 'page': query.page + 1}, doseq=True)}"
+                if query.page < pages
+                else None
+            ),
+            "saved_views": [
+                {
+                    "view": item,
+                    "href": f"/workorders?{urlencode(item.filters_json, doseq=True)}",
+                }
+                for item in saved_views
+            ],
+            "organizations": [
+                item for item in self.iam_service.list_organizations() if item.is_active
+            ],
             "can_create": "workorder:create" in profile.permission_codes,
             "can_evaluate_sla": "workorder:sla:evaluate"
             in profile.permission_codes,
+            "can_batch_dispatch": "workorder:dispatch" in profile.permission_codes,
+            "can_batch_urge": "workorder:urge" in profile.permission_codes,
         }
 
     def work_order_detail(

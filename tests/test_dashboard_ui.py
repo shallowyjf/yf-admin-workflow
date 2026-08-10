@@ -547,3 +547,71 @@ def test_position_permission_and_audit_pages_complete_iam_configuration(
     assert ui_client.get("/iam/positions").status_code == 403
     assert ui_client.get("/iam/permissions").status_code == 403
     assert ui_client.get("/iam/audit").status_code == 403
+
+
+def test_i18_workorder_page_filters_saves_view_and_runs_batch(
+    ui_client: TestClient,
+) -> None:
+    profile = _login(ui_client, "wangwu")
+    pipe_org_id = next(
+        item["id"]
+        for item in profile["organizations"]
+        if item["org_code"] == "PIPE_OPERATION"
+    )
+    ready = ui_client.post(
+        "/api/workorders",
+        json={"title": "I18 页面批量一", "type": "REPAIR", "priority": "HIGH"},
+    ).json()
+    draft = ui_client.post(
+        "/api/workorders",
+        json={"title": "I18 页面批量二", "type": "REPAIR", "priority": "NORMAL"},
+    ).json()
+    ui_client.post(f"/api/workorders/{ready['id']}/submit", json={})
+
+    filtered = ui_client.get(
+        "/workorders",
+        params={"keyword": "页面批量", "priority": "HIGH", "page_size": 10},
+    )
+    assert filtered.status_code == 200
+    assert "I18 页面批量一" in filtered.text
+    assert "I18 页面批量二" not in filtered.text
+    assert 'data-testid="workorder-batch-form"' in filtered.text
+
+    blank_selects = ui_client.get(
+        "/workorders",
+        params={
+            "keyword": "页面批量一",
+            "status": "PENDING_DISPATCH",
+            "priority": "",
+            "sla_status": "",
+        },
+    )
+    assert "I18 页面批量一" in blank_selects.text
+
+    saved = ui_client.post(
+        "/ui/workorders/saved-views",
+        data={
+            "view_name": "页面高优先级",
+            "keyword": "页面批量",
+            "priority": "HIGH",
+            "page_size": "10",
+            "is_default": "true",
+        },
+        follow_redirects=False,
+    )
+    assert saved.status_code == 303
+    assert "页面高优先级" in ui_client.get("/workorders").text
+
+    batch = ui_client.post(
+        "/ui/workorders/batch",
+        data={
+            "work_order_ids": [str(ready["id"]), str(draft["id"])],
+            "batch_action": "dispatch",
+            "target_org_id": str(pipe_org_id),
+            "comment": "I18 页面批量派单",
+        },
+        follow_redirects=False,
+    )
+    assert batch.status_code == 303
+    result_page = ui_client.get(batch.headers["location"])
+    assert "成功 1，失败 1" in result_page.text

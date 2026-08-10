@@ -108,3 +108,35 @@ class SlaEvaluationResponse(BaseModel):
     evaluated: int
     response_breaches: int
     resolution_breaches: int
+
+
+class WorkOrderPageResponse(BaseModel):
+    items: list[WorkOrderResponse]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
+class BatchDispatchRequest(BaseModel):
+    work_order_ids: list[int] = Field(min_length=1, max_length=100)
+    target_org_id: int = Field(gt=0)
+    comment: str | None = Field(default=None, max_length=1000)
+
+
+class BatchUrgeRequest(BaseModel):
+    work_order_ids: list[int] = Field(min_length=1, max_length=100)
+    comment: str = Field(min_length=1, max_length=1000)
+
+
+class BatchItemResponse(BaseModel):
+    work_order_id: int
+    success: bool
+    detail: str
+
+
+class BatchActionResponse(BaseModel):
+    total: int
+    succeeded: int
+    failed: int
+    items: list[BatchItemResponse]

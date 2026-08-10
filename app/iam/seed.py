@@ -103,9 +103,9 @@ class SeedSummary:
     users: int = 5
     roles: int = 5
     positions: int = 3
-    permissions: int = 38
-    role_permissions: int = 69
-    data_scopes: int = 69
+    permissions: int = 40
+    role_permissions: int = 71
+    data_scopes: int = 71
 
 
 def seed_iam(service: IAMService) -> SeedSummary:

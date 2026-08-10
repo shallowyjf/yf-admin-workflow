@@ -12,6 +12,7 @@ def test_shared_declarative_base_contains_current_tables() -> None:
         "sys_auth_session",
         "sys_iam_audit_log",
         "sys_notification",
+        "sys_saved_view",
         "sys_org",
         "sys_permission",
         "sys_position",
@@ -32,6 +33,21 @@ def test_shared_declarative_base_contains_current_tables() -> None:
         "wo_work_order",
         "wo_sla_policy",
     }
+
+
+def test_i18_migration_creates_and_removes_saved_views(tmp_path: Path) -> None:
+    database_path = tmp_path / "i18.db"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    config = Config("alembic.ini")
+    config.set_main_option("sqlalchemy.url", database_url)
+
+    command.upgrade(config, "0009_i18")
+    engine = create_engine(database_url)
+    assert "sys_saved_view" in inspect(engine).get_table_names()
+
+    command.downgrade(config, "0008_i17")
+    assert "sys_saved_view" not in inspect(engine).get_table_names()
+    engine.dispose()
 
 
 def test_database_migration_can_be_created_and_destroyed(tmp_path: Path) -> None:

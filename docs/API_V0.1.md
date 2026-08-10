@@ -44,5 +44,10 @@
 | Workflow | `GET /api/tasks/mine` | 当前用户候选/已分配任务 |
 | Notification | `GET /api/notifications` | 当前用户站内通知 |
 | Notification | `POST /api/notifications/{id}/read` | 通知已读回执 |
+| Operations | `GET/POST /api/saved-views`、`DELETE /api/saved-views/{id}` | 用户隔离的筛选视图 |
+| Work order | `GET /api/workorders/search` | DataScope 内服务端分页、组合筛选与排序 |
+| Work order | `POST /api/workorders/batch/dispatch`、`POST /api/workorders/batch/urge` | 逐条鉴权的批量动作与部分成功报告 |
+| IAM operations | `GET /api/iam/batch/search` | 组织、用户、角色服务端分页 |
+| IAM operations | `GET /api/iam/batch/export`、`POST /api/iam/batch/import` | JSON 导出、逐行导入与错误报告 |
 
 OpenAPI 是请求字段、返回结构与状态码的唯一机器可读契约。本文件用于发布范围导航，不复制 Schema。

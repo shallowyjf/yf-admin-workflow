@@ -27,6 +27,8 @@ PERMISSIONS = (
     ("system:permission:update", "编辑权限", "SYSTEM"),
     ("system:permission:delete", "删除权限", "SYSTEM"),
     ("system:audit:view", "查看 IAM 审计", "SYSTEM"),
+    ("system:iam:import", "批量导入 IAM", "SYSTEM"),
+    ("system:iam:export", "批量导出 IAM", "SYSTEM"),
     ("workorder:view", "查看工单", "WORKORDER"),
     ("workorder:create", "创建工单", "WORKORDER"),
     ("workorder:dispatch", "派单", "WORKORDER"),
