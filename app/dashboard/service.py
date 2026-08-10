@@ -6,6 +6,7 @@ from app.auth.service import AuthProfile
 from app.iam.admin_service import OrganizationAdministrationService
 from app.iam.authorization import PermissionService
 from app.iam.service import IAMService
+from app.iam.user_admin_service import UserAdministrationService
 from app.workflow.models import WorkflowTask
 from app.workflow.service import WorkflowService
 from app.workorder.domain import WorkOrderPermissionDenied
@@ -41,12 +42,14 @@ class DashboardService:
         work_order_service: WorkOrderService,
         workflow_service: WorkflowService,
         organization_admin_service: OrganizationAdministrationService,
+        user_admin_service: UserAdministrationService,
     ) -> None:
         self.iam_service = iam_service
         self.permission_service = permission_service
         self.work_order_service = work_order_service
         self.workflow_service = workflow_service
         self.organization_admin_service = organization_admin_service
+        self.user_admin_service = user_admin_service
 
     def common_context(
         self,
@@ -123,7 +126,39 @@ class DashboardService:
 
     def users(self, profile: AuthProfile) -> dict:
         self._require_system_page(profile, "users")
-        return {"users": self.iam_service.list_users()}
+        users = self.iam_service.list_users()
+        permissions = set(profile.permission_codes)
+        membership_forms = {
+            user.id: {
+                membership.org_id: {
+                    "is_primary": membership.is_primary,
+                    "is_active": membership.is_active,
+                    "role_codes": {
+                        link.role.role_code for link in membership.role_links
+                    },
+                    "position_codes": {
+                        link.position.position_code
+                        for link in membership.position_links
+                    },
+                }
+                for membership in user.memberships
+            }
+            for user in users
+        }
+        return {
+            "users": users,
+            "organizations": self.iam_service.list_organizations(),
+            "roles": self.iam_service.list_roles(),
+            "positions": self.iam_service.list_positions(),
+            "membership_forms": membership_forms,
+            "user_capabilities": {
+                "create": "system:user:create" in permissions,
+                "update": "system:user:update" in permissions,
+                "status": "system:user:status" in permissions,
+                "password": "system:user:password" in permissions,
+                "membership": "system:user:membership" in permissions,
+            },
+        }
 
     def roles(self, profile: AuthProfile) -> dict:
         self._require_system_page(profile, "roles")

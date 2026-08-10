@@ -100,6 +100,15 @@ def test_navigation_and_buttons_follow_effective_permissions(
     )
     assert rejected_create.status_code == 403
     assert "没有访问权限" in rejected_create.text
+    rejected_user = ui_client.post(
+        "/ui/users",
+        data={
+            "username": "ui.denied",
+            "display_name": "越权用户",
+            "password": "Initial@123",
+        },
+    )
+    assert rejected_user.status_code == 403
 
 
 def test_ui_completes_standard_dma_work_order_flow(ui_client: TestClient) -> None:
@@ -236,3 +245,71 @@ def test_organization_page_crud_and_permission_boundary(
         data={"org_code": "UI_FORBIDDEN", "org_name": "越权组织"},
     )
     assert forbidden.status_code == 403
+
+
+def test_user_page_lifecycle_and_membership_configuration(
+    ui_client: TestClient,
+) -> None:
+    _login(ui_client, "admin")
+    page = ui_client.get("/iam/users")
+    assert 'data-testid="create-user"' in page.text
+    created = ui_client.post(
+        "/ui/users",
+        data={
+            "username": "ui.user",
+            "display_name": "页面用户",
+            "password": "Initial@123",
+            "phone": "13900000000",
+        },
+        follow_redirects=False,
+    )
+    assert created.status_code == 303
+    users = ui_client.get("/api/users").json()
+    user_id = next(item["id"] for item in users if item["username"] == "ui.user")
+    organizations = ui_client.get("/api/orgs").json()
+    dispatch_id = next(
+        item["id"] for item in organizations if item["org_code"] == "DISPATCH_CENTER"
+    )
+    pipe_id = next(
+        item["id"] for item in organizations if item["org_code"] == "PIPE_OPERATION"
+    )
+    configured = ui_client.post(
+        f"/ui/users/{user_id}/memberships",
+        data={
+            "member_org_id": [str(dispatch_id), str(pipe_id)],
+            "primary_org_id": str(dispatch_id),
+            f"active_org_{dispatch_id}": "true",
+            f"active_org_{pipe_id}": "true",
+            f"role_{dispatch_id}": ["DISPATCHER"],
+            f"position_{dispatch_id}": ["DISPATCHER"],
+            f"role_{pipe_id}": ["REPAIRER"],
+            f"position_{pipe_id}": ["REPAIRER"],
+        },
+        follow_redirects=False,
+    )
+    assert configured.status_code == 303
+    updated = ui_client.post(
+        f"/ui/users/{user_id}/update",
+        data={"display_name": "页面用户（更新）", "phone": "13700000000"},
+        follow_redirects=False,
+    )
+    assert updated.status_code == 303
+    result_page = ui_client.get("/iam/users")
+    assert "页面用户（更新）" in result_page.text
+    assert "调度员" in result_page.text
+    assert "抢修人员" in result_page.text
+    assert ui_client.post(
+        f"/ui/users/{user_id}/password",
+        data={"new_password": "Changed@123"},
+        follow_redirects=False,
+    ).status_code == 303
+    assert ui_client.post(
+        f"/ui/users/{user_id}/status",
+        data={"is_active": "false"},
+        follow_redirects=False,
+    ).status_code == 303
+    disabled_login = ui_client.post(
+        "/auth/login",
+        json={"username": "ui.user", "password": "Changed@123"},
+    )
+    assert disabled_login.status_code == 401

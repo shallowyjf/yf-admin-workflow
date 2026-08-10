@@ -12,12 +12,14 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
+from app.auth.repository import AuthRepository
 from app.auth.router import get_auth_service
 from app.auth.service import (
     ActiveOrganizationDenied,
     AuthenticationError,
     AuthProfile,
     AuthService,
+    AuthSessionRevocationService,
     RequestContext,
 )
 from app.db.dependencies import get_db_session
@@ -33,6 +35,12 @@ from app.iam.admin_service import (
 from app.iam.authorization import PermissionService
 from app.iam.repository import IAMRepository
 from app.iam.service import DuplicateIAMCode, IAMEntityNotFound, IAMService
+from app.iam.user_admin_service import (
+    CreateUserCommand,
+    MembershipConfiguration,
+    UpdateUserCommand,
+    UserAdministrationService,
+)
 from app.workflow.domain import TaskAccessDenied, WorkflowError
 from app.workflow.factory import build_workflow_service
 from app.workorder.domain import (
@@ -94,6 +102,11 @@ def get_dashboard_service(
         work_order_service,
         workflow_service,
         OrganizationAdministrationService(iam_repository, permission_service),
+        UserAdministrationService(
+            iam_repository,
+            permission_service,
+            AuthSessionRevocationService(AuthRepository(session)),
+        ),
     )
 
 
@@ -122,6 +135,10 @@ def _page(
 async def _form(request: Request) -> dict[str, str]:
     parsed = parse_qs((await request.body()).decode("utf-8"), keep_blank_values=True)
     return {key: values[-1] for key, values in parsed.items()}
+
+
+async def _form_lists(request: Request) -> dict[str, list[str]]:
+    return parse_qs((await request.body()).decode("utf-8"), keep_blank_values=True)
 
 
 def _actor(identity: PageIdentity) -> WorkOrderActor:
@@ -469,6 +486,160 @@ async def delete_organization_page(
     return RedirectResponse(
         "/iam/organizations", status_code=status.HTTP_303_SEE_OTHER
     )
+
+
+@router.post("/ui/users", include_in_schema=False, response_model=None)
+async def create_user_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse | RedirectResponse:
+    values = await _form(request)
+    try:
+        service.user_admin_service.create(
+            CreateUserCommand(
+                username=values.get("username", ""),
+                display_name=values.get("display_name", ""),
+                password=values.get("password", ""),
+                phone=values.get("phone") or None,
+            ),
+            _iam_actor(identity),
+        )
+    except (
+        DuplicateIAMCode,
+        IAMAdministrationPermissionDenied,
+        IAMAdministrationValidationError,
+    ) as error:
+        return _friendly_error(request, service, identity, error)
+    return RedirectResponse("/iam/users", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post(
+    "/ui/users/{user_id}/update",
+    include_in_schema=False,
+    response_model=None,
+)
+async def update_user_page(
+    request: Request,
+    user_id: int,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse | RedirectResponse:
+    values = await _form(request)
+    try:
+        service.user_admin_service.update(
+            user_id,
+            UpdateUserCommand(
+                display_name=values.get("display_name", ""),
+                phone=values.get("phone") or None,
+            ),
+            _iam_actor(identity),
+        )
+    except (
+        IAMAdministrationPermissionDenied,
+        IAMAdministrationValidationError,
+        IAMEntityNotFound,
+    ) as error:
+        return _friendly_error(request, service, identity, error)
+    return RedirectResponse("/iam/users", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post(
+    "/ui/users/{user_id}/status",
+    include_in_schema=False,
+    response_model=None,
+)
+async def user_status_page(
+    request: Request,
+    user_id: int,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse | RedirectResponse:
+    values = await _form(request)
+    try:
+        service.user_admin_service.set_active(
+            user_id,
+            values.get("is_active", "").lower() == "true",
+            _iam_actor(identity),
+        )
+    except (
+        IAMAdministrationConflict,
+        IAMAdministrationPermissionDenied,
+        IAMEntityNotFound,
+    ) as error:
+        return _friendly_error(request, service, identity, error)
+    return RedirectResponse("/iam/users", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post(
+    "/ui/users/{user_id}/password",
+    include_in_schema=False,
+    response_model=None,
+)
+async def reset_user_password_page(
+    request: Request,
+    user_id: int,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse | RedirectResponse:
+    values = await _form(request)
+    try:
+        service.user_admin_service.reset_password(
+            user_id,
+            values.get("new_password", ""),
+            _iam_actor(identity),
+        )
+    except (
+        IAMAdministrationPermissionDenied,
+        IAMAdministrationValidationError,
+        IAMEntityNotFound,
+    ) as error:
+        return _friendly_error(request, service, identity, error)
+    return RedirectResponse("/iam/users", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post(
+    "/ui/users/{user_id}/memberships",
+    include_in_schema=False,
+    response_model=None,
+)
+async def replace_user_memberships_page(
+    request: Request,
+    user_id: int,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse | RedirectResponse:
+    values = await _form_lists(request)
+    organizations = {
+        str(item.id): item
+        for item in service.iam_service.list_organizations()
+    }
+    selected_ids = set(values.get("member_org_id", []))
+    primary_id = (values.get("primary_org_id") or [""])[-1]
+    configurations = tuple(
+        MembershipConfiguration(
+            org_code=organizations[org_id].org_code,
+            is_primary=org_id == primary_id,
+            is_active=f"active_org_{org_id}" in values,
+            role_codes=tuple(values.get(f"role_{org_id}", [])),
+            position_codes=tuple(values.get(f"position_{org_id}", [])),
+        )
+        for org_id in selected_ids
+        if org_id in organizations
+    )
+    try:
+        service.user_admin_service.replace_memberships(
+            user_id,
+            configurations,
+            _iam_actor(identity),
+        )
+    except (
+        IAMAdministrationPermissionDenied,
+        IAMAdministrationValidationError,
+        IAMEntityNotFound,
+    ) as error:
+        return _friendly_error(request, service, identity, error)
+    return RedirectResponse("/iam/users", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/ui/workorders", include_in_schema=False, response_model=None)

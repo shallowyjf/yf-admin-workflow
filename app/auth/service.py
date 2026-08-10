@@ -196,3 +196,16 @@ class AuthService:
     @staticmethod
     def _now() -> datetime:
         return datetime.now(UTC).replace(tzinfo=None)
+
+
+class AuthSessionRevocationService:
+    """Stage revocation of all sessions owned by a user in the caller transaction."""
+
+    def __init__(self, repository: AuthRepository) -> None:
+        self.repository = repository
+
+    def revoke_user_sessions(self, user_id: int) -> None:
+        self.repository.revoke_user_sessions(
+            user_id,
+            datetime.now(UTC).replace(tzinfo=None),
+        )

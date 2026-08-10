@@ -35,6 +35,9 @@ class IAMRepository:
     def refresh(self, entity: object) -> None:
         self.session.refresh(entity)
 
+    def expire_all(self) -> None:
+        self.session.expire_all()
+
     def flush(self) -> None:
         self.session.flush()
 
@@ -43,6 +46,23 @@ class IAMRepository:
 
     def get_user_by_username(self, username: str) -> User | None:
         return self.session.scalar(select(User).where(User.username == username))
+
+    def get_user(self, user_id: int) -> User | None:
+        return self.session.scalar(
+            select(User)
+            .where(User.id == user_id)
+            .options(
+                selectinload(User.memberships).selectinload(
+                    UserOrganization.organization
+                ),
+                selectinload(User.memberships)
+                .selectinload(UserOrganization.role_links)
+                .selectinload(UserOrganizationRole.role),
+                selectinload(User.memberships)
+                .selectinload(UserOrganization.position_links)
+                .selectinload(UserOrganizationPosition.position),
+            )
+        )
 
     def get_organization_by_code(self, org_code: str) -> Organization | None:
         return self.session.scalar(

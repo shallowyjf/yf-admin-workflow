@@ -1,6 +1,8 @@
 """Persistence operations for authentication sessions and user context."""
 
-from sqlalchemy import select
+from datetime import datetime
+
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.iam.models import (
@@ -80,3 +82,13 @@ class AuthRepository:
 
     def refresh(self, entity: object) -> None:
         self.session.refresh(entity)
+
+    def revoke_user_sessions(self, user_id: int, revoked_at: datetime) -> None:
+        self.session.execute(
+            update(AuthSession)
+            .where(
+                AuthSession.user_id == user_id,
+                AuthSession.revoked_at.is_(None),
+            )
+            .values(revoked_at=revoked_at)
+        )

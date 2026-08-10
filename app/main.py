@@ -21,6 +21,7 @@ from app.dashboard.router import (
 )
 from app.db.session import Database
 from app.iam.router import router as iam_router
+from app.iam.user_router import router as iam_user_router
 from app.system.repository import HealthRepository
 from app.system.router import router as system_router
 from app.system.service import HealthService
@@ -54,6 +55,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(system_router)
     application.include_router(auth_router)
     application.include_router(iam_router)
+    application.include_router(iam_user_router)
     application.include_router(work_order_router)
     application.include_router(workflow_router)
     application.include_router(dashboard_router)

@@ -1,4 +1,64 @@
-{% extends "base.html" %}{% block content %}
-<section class="page-intro"><div><h2>用户与组织关系</h2><p>同一用户可在不同组织中拥有不同角色和岗位。</p></div><button class="button primary" disabled title="本轮提供查询演示">新增用户</button></section>
-<section class="card-grid">{% for user in users %}<article class="entity-card"><div class="entity-title"><span class="avatar">{{ user.display_name[:1] }}</span><span><strong>{{ user.display_name }}</strong><small>@{{ user.username }}</small></span><span class="status">{{ '启用' if user.is_active else '停用' }}</span></div>{% for membership in user.memberships %}<div class="membership"><strong>{{ membership.organization.org_name }}</strong><small>角色：{% for link in membership.role_links %}{{ link.role.role_name }}{% if not loop.last %}、{% endif %}{% else %}未绑定{% endfor %}</small><small>岗位：{% for link in membership.position_links %}{{ link.position.position_name }}{% if not loop.last %}、{% endif %}{% else %}未绑定{% endfor %}</small></div>{% endfor %}</article>{% endfor %}</section>
+{% extends "base.html" %}
+{% block content %}
+<section class="page-intro">
+  <div><h2>用户与组织关系</h2><p>账号资料属于用户，角色与岗位始终绑定在具体组织成员关系下。</p></div>
+  {% if user_capabilities.create %}<button class="button primary" type="button" onclick="document.querySelector('#create-user-panel').toggleAttribute('hidden')" data-testid="create-user">新增用户</button>{% endif %}
+</section>
+{% if user_capabilities.create %}
+<section id="create-user-panel" class="panel form-panel" hidden>
+  <div class="panel-head"><div><p class="eyebrow">NEW USER</p><h2>新增用户</h2></div></div>
+  <form method="post" action="/ui/users" class="form-grid">
+    <label>用户名<input name="username" placeholder="例如 field.tech" required></label>
+    <label>姓名<input name="display_name" required></label>
+    <label>初始密码<input name="password" type="password" minlength="8" required></label>
+    <label>手机号码<input name="phone"></label>
+    <div class="span-2 form-actions"><button class="button primary" type="submit">创建用户</button></div>
+  </form>
+</section>
+{% endif %}
+<section class="card-grid">
+{% for user in users %}
+  <article class="entity-card user-admin-card">
+    <div class="entity-title">
+      <span class="avatar">{{ user.display_name[:1] }}</span>
+      <span><strong>{{ user.display_name }}</strong><small>@{{ user.username }}{% if user.phone %} · {{ user.phone }}{% endif %}</small></span>
+      <span class="status">{{ '启用' if user.is_active else '停用' }}</span>
+    </div>
+    {% for membership in user.memberships %}
+    <div class="membership{% if not membership.is_active %} membership-inactive{% endif %}">
+      <strong>{{ membership.organization.org_name }}{% if membership.is_primary %} · 主组织{% endif %}</strong>
+      <small>角色：{% for link in membership.role_links %}{{ link.role.role_name }}{% if not loop.last %}、{% endif %}{% else %}未绑定{% endfor %}</small>
+      <small>岗位：{% for link in membership.position_links %}{{ link.position.position_name }}{% if not loop.last %}、{% endif %}{% else %}未绑定{% endfor %}</small>
+      {% if not membership.is_active %}<small>成员关系已停用</small>{% endif %}
+    </div>
+    {% else %}<div class="empty">尚未配置组织，账号暂时无法登录</div>{% endfor %}
+    <div class="user-actions">
+      {% if user_capabilities.update %}<details><summary class="button ghost">编辑资料</summary><form method="post" action="/ui/users/{{ user.id }}/update" class="detail-form"><label>姓名<input name="display_name" value="{{ user.display_name }}" required></label><label>手机号码<input name="phone" value="{{ user.phone or '' }}"></label><button class="button primary" type="submit">保存</button></form></details>{% endif %}
+      {% if user_capabilities.password %}<details><summary class="button ghost">重置密码</summary><form method="post" action="/ui/users/{{ user.id }}/password" class="detail-form"><label>新密码<input name="new_password" type="password" minlength="8" required></label><button class="button primary" type="submit">确认重置</button></form></details>{% endif %}
+      {% if user_capabilities.status %}<form method="post" action="/ui/users/{{ user.id }}/status"><input type="hidden" name="is_active" value="{{ 'false' if user.is_active else 'true' }}"><button class="button {{ 'danger' if user.is_active else 'ghost' }}" type="submit">{{ '停用' if user.is_active else '启用' }}</button></form>{% endif %}
+    </div>
+    {% if user_capabilities.membership %}
+    <details class="membership-editor">
+      <summary>配置组织、角色与岗位</summary>
+      <form method="post" action="/ui/users/{{ user.id }}/memberships">
+        <p class="muted">选择成员组织，并指定唯一的启用主组织。提交后将替换该用户的全部成员配置。</p>
+        {% for org in organizations %}
+        {% set configured = membership_forms[user.id].get(org.id) %}
+        <fieldset class="membership-option">
+          <legend><label class="check-label"><input type="checkbox" name="member_org_id" value="{{ org.id }}"{% if configured %} checked{% endif %}{% if not org.is_active and not configured %} disabled{% endif %}>{{ org.org_name }} · {{ org.org_code }}{% if not org.is_active %}（组织已停用）{% endif %}</label></legend>
+          <div class="membership-controls">
+            <label class="check-label"><input type="radio" name="primary_org_id" value="{{ org.id }}"{% if configured and configured.is_primary %} checked{% endif %}>设为主组织</label>
+            <label class="check-label"><input type="checkbox" name="active_org_{{ org.id }}" value="true"{% if (configured and configured.is_active) or (not configured and org.is_active) %} checked{% endif %}>成员关系启用</label>
+            <label>角色<select name="role_{{ org.id }}" multiple>{% for role in roles if role.is_active %}<option value="{{ role.role_code }}"{% if configured and role.role_code in configured.role_codes %} selected{% endif %}>{{ role.role_name }}</option>{% endfor %}</select></label>
+            <label>岗位<select name="position_{{ org.id }}" multiple>{% for position in positions if position.is_active %}<option value="{{ position.position_code }}"{% if configured and position.position_code in configured.position_codes %} selected{% endif %}>{{ position.position_name }}</option>{% endfor %}</select></label>
+          </div>
+        </fieldset>
+        {% endfor %}
+        <button class="button primary wide" type="submit" data-testid="save-memberships">保存成员配置</button>
+      </form>
+    </details>
+    {% endif %}
+  </article>
+{% endfor %}
+</section>
 {% endblock %}
