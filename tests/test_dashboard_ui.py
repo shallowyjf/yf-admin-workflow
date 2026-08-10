@@ -313,3 +313,66 @@ def test_user_page_lifecycle_and_membership_configuration(
         json={"username": "ui.user", "password": "Changed@123"},
     )
     assert disabled_login.status_code == 401
+
+
+def test_role_page_lifecycle_and_authorization_matrix(
+    ui_client: TestClient,
+) -> None:
+    _login(ui_client, "admin")
+    page = ui_client.get("/iam/roles")
+    assert page.status_code == 200
+    assert 'data-testid="create-role"' in page.text
+    assert 'data-testid="save-role-authorization"' in page.text
+    created = ui_client.post(
+        "/ui/roles",
+        data={
+            "role_code": "UI_ROLE",
+            "role_name": "页面角色",
+            "role_type": "BUSINESS",
+        },
+        follow_redirects=False,
+    )
+    assert created.status_code == 303
+    roles = ui_client.get("/api/roles").json()
+    role_id = next(item["id"] for item in roles if item["role_code"] == "UI_ROLE")
+    with ui_client.app.state.database.session_factory() as session:
+        repository = IAMRepository(session)
+        permission = repository.get_permission_by_code("workorder:view")
+        team = repository.get_organization_by_code("INSPECTION_TEAM_1")
+        assert permission is not None and team is not None
+        permission_id = permission.id
+        team_id = team.id
+    authorized = ui_client.post(
+        f"/ui/roles/{role_id}/authorization",
+        data={
+            "permission_code": "workorder:view",
+            f"scope_{permission_id}": "CUSTOM",
+            f"custom_org_{permission_id}": str(team_id),
+        },
+        follow_redirects=False,
+    )
+    assert authorized.status_code == 303
+    role = ui_client.get(f"/api/roles/{role_id}").json()
+    assert role["authorization"][0]["scope_type"] == "CUSTOM"
+    assert role["authorization"][0]["custom_org_codes"] == [
+        "INSPECTION_TEAM_1"
+    ]
+    assert ui_client.post(
+        f"/ui/roles/{role_id}/update",
+        data={"role_name": "页面角色（更新）", "role_type": "FIELD"},
+        follow_redirects=False,
+    ).status_code == 303
+    assert "页面角色（更新）" in ui_client.get("/iam/roles").text
+    assert ui_client.post(
+        f"/ui/roles/{role_id}/status",
+        data={"is_active": "false"},
+        follow_redirects=False,
+    ).status_code == 303
+
+    _login(ui_client, "lisi")
+    assert ui_client.get("/iam/roles").status_code == 403
+    forbidden = ui_client.post(
+        "/ui/roles",
+        data={"role_code": "UI_FORBIDDEN", "role_name": "越权角色"},
+    )
+    assert forbidden.status_code == 403

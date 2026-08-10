@@ -106,3 +106,51 @@
 .membership-controls select[multiple] {
   min-height: 84px;
 }
+
+.role-grid {
+  grid-template-columns: 1fr;
+}
+
+.role-admin-card .tag-list {
+  max-height: 80px;
+  overflow: auto;
+}
+
+.authorization-editor {
+  border-top: 1px solid var(--line);
+  margin-top: 16px;
+  padding-top: 14px;
+}
+
+.authorization-editor > summary {
+  color: var(--teal);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.authorization-editor form {
+  margin-top: 14px;
+}
+
+.authorization-table {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  margin: 12px 0 14px;
+  max-height: 520px;
+}
+
+.authorization-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.authorization-table select {
+  min-width: 170px;
+}
+
+.compact-check {
+  height: 18px;
+  width: 18px;
+}

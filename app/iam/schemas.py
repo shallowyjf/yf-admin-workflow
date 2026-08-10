@@ -2,6 +2,8 @@
 
 from pydantic import BaseModel, Field
 
+from .authorization import DataScopeType
+
 
 class CreateOrganizationRequest(BaseModel):
     org_code: str = Field(min_length=2, max_length=80)
@@ -87,3 +89,46 @@ class UserResponse(BaseModel):
     phone: str | None
     is_active: bool
     memberships: list[UserMembershipResponse]
+
+
+class CreateRoleRequest(BaseModel):
+    role_code: str = Field(min_length=2, max_length=80)
+    role_name: str = Field(min_length=1, max_length=120)
+    role_type: str | None = Field(default=None, max_length=40)
+
+
+class UpdateRoleRequest(BaseModel):
+    role_name: str = Field(min_length=1, max_length=120)
+    role_type: str | None = Field(default=None, max_length=40)
+
+
+class RoleStatusRequest(BaseModel):
+    is_active: bool
+
+
+class PermissionScopeConfigurationRequest(BaseModel):
+    permission_code: str = Field(min_length=1, max_length=120)
+    scope_type: DataScopeType
+    custom_org_codes: list[str] = Field(default_factory=list)
+
+
+class ReplaceRoleAuthorizationRequest(BaseModel):
+    permissions: list[PermissionScopeConfigurationRequest] = Field(
+        default_factory=list
+    )
+
+
+class RolePermissionScopeResponse(BaseModel):
+    permission_code: str
+    permission_name: str
+    scope_type: DataScopeType
+    custom_org_codes: list[str]
+
+
+class RoleResponse(BaseModel):
+    id: int
+    role_code: str
+    role_name: str
+    role_type: str | None
+    is_active: bool
+    authorization: list[RolePermissionScopeResponse]

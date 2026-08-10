@@ -123,6 +123,18 @@ class IAMRepository:
     def get_role_by_code(self, role_code: str) -> Role | None:
         return self.session.scalar(select(Role).where(Role.role_code == role_code))
 
+    def get_role(self, role_id: int) -> Role | None:
+        return self.session.scalar(
+            select(Role)
+            .where(Role.id == role_id)
+            .options(
+                selectinload(Role.permission_links).selectinload(
+                    RolePermission.permission
+                ),
+                selectinload(Role.data_scopes),
+            )
+        )
+
     def get_position_by_code(self, position_code: str) -> Position | None:
         return self.session.scalar(
             select(Position).where(Position.position_code == position_code)

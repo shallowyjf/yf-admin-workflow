@@ -34,6 +34,12 @@ from app.iam.admin_service import (
 )
 from app.iam.authorization import PermissionService
 from app.iam.repository import IAMRepository
+from app.iam.role_admin_service import (
+    CreateRoleCommand,
+    PermissionScopeConfiguration,
+    RoleAdministrationService,
+    UpdateRoleCommand,
+)
 from app.iam.service import DuplicateIAMCode, IAMEntityNotFound, IAMService
 from app.iam.user_admin_service import (
     CreateUserCommand,
@@ -107,6 +113,7 @@ def get_dashboard_service(
             permission_service,
             AuthSessionRevocationService(AuthRepository(session)),
         ),
+        RoleAdministrationService(iam_repository, permission_service),
     )
 
 
@@ -640,6 +647,147 @@ async def replace_user_memberships_page(
     ) as error:
         return _friendly_error(request, service, identity, error)
     return RedirectResponse("/iam/users", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/ui/roles", include_in_schema=False, response_model=None)
+async def create_role_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse | RedirectResponse:
+    values = await _form(request)
+    try:
+        service.role_admin_service.create(
+            CreateRoleCommand(
+                role_code=values.get("role_code", ""),
+                role_name=values.get("role_name", ""),
+                role_type=values.get("role_type") or None,
+            ),
+            _iam_actor(identity),
+        )
+    except (
+        DuplicateIAMCode,
+        IAMAdministrationPermissionDenied,
+        IAMAdministrationValidationError,
+    ) as error:
+        return _friendly_error(request, service, identity, error)
+    return RedirectResponse("/iam/roles", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post(
+    "/ui/roles/{role_id}/update",
+    include_in_schema=False,
+    response_model=None,
+)
+async def update_role_page(
+    request: Request,
+    role_id: int,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse | RedirectResponse:
+    values = await _form(request)
+    try:
+        service.role_admin_service.update(
+            role_id,
+            UpdateRoleCommand(
+                role_name=values.get("role_name", ""),
+                role_type=values.get("role_type") or None,
+            ),
+            _iam_actor(identity),
+        )
+    except (
+        IAMAdministrationPermissionDenied,
+        IAMAdministrationValidationError,
+        IAMEntityNotFound,
+    ) as error:
+        return _friendly_error(request, service, identity, error)
+    return RedirectResponse("/iam/roles", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post(
+    "/ui/roles/{role_id}/status",
+    include_in_schema=False,
+    response_model=None,
+)
+async def role_status_page(
+    request: Request,
+    role_id: int,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse | RedirectResponse:
+    values = await _form(request)
+    try:
+        service.role_admin_service.set_active(
+            role_id,
+            values.get("is_active", "").lower() == "true",
+            _iam_actor(identity),
+        )
+    except (
+        IAMAdministrationConflict,
+        IAMAdministrationPermissionDenied,
+        IAMEntityNotFound,
+    ) as error:
+        return _friendly_error(request, service, identity, error)
+    return RedirectResponse("/iam/roles", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post(
+    "/ui/roles/{role_id}/authorization",
+    include_in_schema=False,
+    response_model=None,
+)
+async def replace_role_authorization_page(
+    request: Request,
+    role_id: int,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse | RedirectResponse:
+    values = await _form_lists(request)
+    permissions = {
+        item.permission_code: item
+        for item in service.iam_service.list_permissions()
+    }
+    organizations = {
+        str(item.id): item
+        for item in service.iam_service.list_organizations()
+    }
+    configuration_items = []
+    for permission_code in values.get("permission_code", []):
+        permission = permissions.get(permission_code)
+        if permission is None:
+            continue
+        scope_type = (values.get(f"scope_{permission.id}") or ["ORG"])[-1]
+        custom_org_codes = (
+            tuple(
+                organizations[org_id].org_code
+                for org_id in values.get(f"custom_org_{permission.id}", [])
+                if org_id in organizations
+            )
+            if scope_type == "CUSTOM"
+            else ()
+        )
+        configuration_items.append(
+            PermissionScopeConfiguration(
+                permission_code=permission_code,
+                scope_type=scope_type,
+                custom_org_codes=custom_org_codes,
+            )
+        )
+    configurations = tuple(configuration_items)
+    try:
+        service.role_admin_service.replace_authorization(
+            role_id,
+            configurations,
+            _iam_actor(identity),
+        )
+    except (
+        IAMAdministrationConflict,
+        IAMAdministrationPermissionDenied,
+        IAMAdministrationValidationError,
+        IAMEntityNotFound,
+    ) as error:
+        return _friendly_error(request, service, identity, error)
+    return RedirectResponse("/iam/roles", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/ui/workorders", include_in_schema=False, response_model=None)

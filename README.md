@@ -1,6 +1,6 @@
 # 统一权限与流程工单平台 Python Demo
 
-这是正式系统前的可运行架构原型，用于逐轮验证 IAM、功能权限、数据范围、CandidateResolver、WorkflowTask 与 WorkOrder 的领域边界。当前代码完成 **I12：用户生命周期与多组织关系**。
+这是正式系统前的可运行架构原型，用于逐轮验证 IAM、功能权限、数据范围、CandidateResolver、WorkflowTask 与 WorkOrder 的领域边界。当前代码完成 **I13：角色授权与 DataScope 闭环**。
 
 ## 环境
 
@@ -59,10 +59,10 @@ Copy-Item .env.example .env
 - `wangwu`：创建、提交、派单、复核和关闭工单；
 - `lisi`：查看候选任务、认领工单并提交处理结果。
 
-页面提供登录、工作台、五个 IAM 管理视图、工单列表、工单详情和我的任务共 10 个核心视图。组织管理支持完整 CRUD；用户管理支持新增、编辑、启停、密码重置，以及多组织、主组织、组织内角色和岗位配置。导航和动作按钮由服务层按有效权限计算，隐藏按钮不替代接口二次鉴权。
+页面提供登录、工作台、五个 IAM 管理视图、工单列表、工单详情和我的任务共 10 个核心视图。组织管理支持完整 CRUD；用户管理支持新增、编辑、启停、密码重置，以及多组织、主组织、组织内角色和岗位配置；角色管理支持新增、编辑、启停，以及 Permission + DataScope 原子授权矩阵。导航和动作按钮由服务层按有效权限计算，隐藏按钮不替代接口二次鉴权。
 
 ## 当前边界
 
-I12 在 I11 组织管理基础上增加用户生命周期闭环。用户名创建后不可修改，用户不物理删除；停用用户、重置密码或替换成员关系会撤销其现有会话。角色、岗位始终绑定 UserOrganization，不在 User 上增加快捷外键。角色授权、岗位和权限字典的写操作按 `docs/iterations/ROADMAP_I11_I15.md` 在后续迭代完成。
+I13 在 I12 用户管理基础上增加角色授权闭环。角色编码创建后不可修改，角色不物理删除；权限与数据范围必须成对配置，授权整套原子替换，撤销权限同步清理 DataScope。角色启停和授权变化在下一次请求即时生效，无需重新登录。岗位和权限字典的写操作按 `docs/iterations/ROADMAP_I11_I15.md` 在 I14 完成。
 
-Demo 用户为 `admin`、`wangwu`、`zhangsan`、`lisi`、`zhaoliu`，初始密码统一为 `Demo@123456`，仅限本地演示。候选人解析演示可运行 `.\.venv\Scripts\python.exe -m app.demo.candidate_demo`。设计约束见 `AI_CODING_RULES.md`，本轮验收见 `docs/iterations/I12.md`。
+Demo 用户为 `admin`、`wangwu`、`zhangsan`、`lisi`、`zhaoliu`，初始密码统一为 `Demo@123456`，仅限本地演示。候选人解析演示可运行 `.\.venv\Scripts\python.exe -m app.demo.candidate_demo`。设计约束见 `AI_CODING_RULES.md`，本轮验收见 `docs/iterations/I13.md`。

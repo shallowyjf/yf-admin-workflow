@@ -1,4 +1,60 @@
-{% extends "base.html" %}{% block content %}
-<section class="page-intro"><div><h2>角色授权视图</h2><p>角色聚合稳定权限编码，并为每项权限定义数据范围。</p></div><button class="button primary" disabled title="本轮提供查询演示">新增角色</button></section>
-<section class="card-grid">{% for role in roles %}<article class="entity-card"><div class="entity-title"><span class="role-icon">R</span><span><strong>{{ role.role_name }}</strong><small>{{ role.role_code }} · {{ role.role_type or '业务角色' }}</small></span><span class="status">{{ '启用' if role.is_active else '停用' }}</span></div><p class="meta-label">已授权权限</p><div class="tag-list">{% for link in role.permission_links %}<span>{{ link.permission.permission_code }}</span>{% else %}<small>暂无授权</small>{% endfor %}</div><p class="meta-label">数据范围</p><div class="scope-list">{% for scope in role.data_scopes %}<small>{{ scope.permission_code }} → <b>{{ scope.scope_type }}</b></small>{% endfor %}</div></article>{% endfor %}</section>
+{% extends "base.html" %}
+{% block content %}
+<section class="page-intro">
+  <div><h2>角色与授权</h2><p>每项权限必须同时配置数据范围；提交授权后，下一次请求立即生效。</p></div>
+  {% if role_capabilities.create %}<button class="button primary" type="button" onclick="document.querySelector('#create-role-panel').toggleAttribute('hidden')" data-testid="create-role">新增角色</button>{% endif %}
+</section>
+{% if role_capabilities.create %}
+<section id="create-role-panel" class="panel form-panel" hidden>
+  <div class="panel-head"><div><p class="eyebrow">NEW ROLE</p><h2>新增角色</h2></div></div>
+  <form method="post" action="/ui/roles" class="form-grid">
+    <label>角色编码<input name="role_code" placeholder="例如 FIELD_MANAGER" pattern="[A-Za-z][A-Za-z0-9_]+" required></label>
+    <label>角色名称<input name="role_name" required></label>
+    <label>角色类型<input name="role_type" placeholder="BUSINESS"></label>
+    <div class="form-actions"><button class="button primary" type="submit">创建角色</button></div>
+  </form>
+</section>
+{% endif %}
+<section class="card-grid role-grid">
+{% for role in roles %}
+  <article class="entity-card role-admin-card">
+    <div class="entity-title">
+      <span class="role-icon">R</span>
+      <span><strong>{{ role.role_name }}</strong><small>{{ role.role_code }} · {{ role.role_type or '业务角色' }}</small></span>
+      <span class="status">{{ '启用' if role.is_active else '停用' }}</span>
+    </div>
+    <p class="meta-label">已授权权限 · {{ role.permission_links|length }}</p>
+    <div class="tag-list">{% for link in role.permission_links %}<span>{{ link.permission.permission_code }}</span>{% else %}<small>暂无授权</small>{% endfor %}</div>
+    <div class="user-actions">
+      {% if role_capabilities.update %}<details><summary class="button ghost">编辑资料</summary><form method="post" action="/ui/roles/{{ role.id }}/update" class="detail-form"><label>角色名称<input name="role_name" value="{{ role.role_name }}" required></label><label>角色类型<input name="role_type" value="{{ role.role_type or '' }}"></label><button class="button primary" type="submit">保存</button></form></details>{% endif %}
+      {% if role_capabilities.status %}<form method="post" action="/ui/roles/{{ role.id }}/status"><input type="hidden" name="is_active" value="{{ 'false' if role.is_active else 'true' }}"><button class="button {{ 'danger' if role.is_active else 'ghost' }}" type="submit">{{ '停用' if role.is_active else '启用' }}</button></form>{% endif %}
+    </div>
+    {% if role_capabilities.authorize %}
+    <details class="authorization-editor">
+      <summary>配置权限与数据范围</summary>
+      <form method="post" action="/ui/roles/{{ role.id }}/authorization">
+        <p class="muted">勾选权限并选择范围。CUSTOM 还需多选一个或多个启用组织；提交会替换当前角色的全部授权。</p>
+        <div class="table-wrap authorization-table">
+          <table>
+            <thead><tr><th>授予</th><th>权限</th><th>数据范围</th><th>CUSTOM 组织</th></tr></thead>
+            <tbody>
+            {% for permission in permissions %}
+              {% set configured = authorization_forms[role.id].get(permission.permission_code) %}
+              <tr>
+                <td><input class="compact-check" type="checkbox" name="permission_code" value="{{ permission.permission_code }}"{% if configured %} checked{% endif %}></td>
+                <td><strong>{{ permission.permission_name }}</strong><small class="cell-sub">{{ permission.permission_code }}</small></td>
+                <td><select name="scope_{{ permission.id }}"><option value="ALL"{% if configured and configured.scope_type == 'ALL' %} selected{% endif %}>ALL · 全部</option><option value="ORG"{% if not configured or configured.scope_type == 'ORG' %} selected{% endif %}>ORG · 当前组织</option><option value="ORG_AND_CHILD"{% if configured and configured.scope_type == 'ORG_AND_CHILD' %} selected{% endif %}>ORG_AND_CHILD · 当前及下级</option><option value="SELF"{% if configured and configured.scope_type == 'SELF' %} selected{% endif %}>SELF · 本人</option><option value="CUSTOM"{% if configured and configured.scope_type == 'CUSTOM' %} selected{% endif %}>CUSTOM · 指定组织</option></select></td>
+                <td><select name="custom_org_{{ permission.id }}" multiple size="3">{% for org in organizations %}<option value="{{ org.id }}"{% if configured and org.id in configured.custom_org_ids %} selected{% endif %}{% if not org.is_active %} disabled{% endif %}>{{ org.org_name }} · {{ org.org_code }}</option>{% endfor %}</select></td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <button class="button primary wide" type="submit" data-testid="save-role-authorization">保存全部授权</button>
+      </form>
+    </details>
+    {% endif %}
+  </article>
+{% endfor %}
+</section>
 {% endblock %}

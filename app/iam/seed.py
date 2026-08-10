@@ -52,6 +52,10 @@ PERMISSIONS = (
     ("system:user:status", "启停用户", "SYSTEM"),
     ("system:user:password", "重置用户密码", "SYSTEM"),
     ("system:user:membership", "配置用户组织关系", "SYSTEM"),
+    ("system:role:create", "新增角色", "SYSTEM"),
+    ("system:role:update", "编辑角色", "SYSTEM"),
+    ("system:role:status", "启停角色", "SYSTEM"),
+    ("system:role:authorize", "配置角色授权", "SYSTEM"),
     ("workorder:view", "查看工单", "WORKORDER"),
     ("workorder:create", "创建工单", "WORKORDER"),
     ("workorder:dispatch", "派单", "WORKORDER"),
@@ -108,9 +112,9 @@ class SeedSummary:
     users: int = 5
     roles: int = 5
     positions: int = 3
-    permissions: int = 22
-    role_permissions: int = 39
-    data_scopes: int = 39
+    permissions: int = 26
+    role_permissions: int = 43
+    data_scopes: int = 43
 
 
 def seed_iam(service: IAMService) -> SeedSummary:
