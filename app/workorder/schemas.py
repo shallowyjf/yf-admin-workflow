@@ -33,6 +33,15 @@ class WorkOrderActionRequest(BaseModel):
     comment: str | None = Field(default=None, max_length=1000)
 
 
+class WorkOrderCommentRequest(BaseModel):
+    comment: str = Field(min_length=1, max_length=1000)
+
+
+class TransferWorkOrderRequest(BaseModel):
+    target_user_id: int = Field(gt=0)
+    comment: str | None = Field(default=None, max_length=1000)
+
+
 class SubmitResultRequest(BaseModel):
     result: str = Field(min_length=1, max_length=4000)
     comment: str | None = Field(default=None, max_length=1000)

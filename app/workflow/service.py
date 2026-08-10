@@ -195,6 +195,52 @@ class WorkflowService:
             self.repository.rollback()
             raise
 
+    def transfer_workorder(
+        self,
+        work_order_id: int,
+        operator_id: int,
+        target_user_id: int,
+    ) -> WorkflowTask:
+        """Atomically replace the assignee of the active handle task."""
+
+        try:
+            task = self._current_task(work_order_id, "HANDLE")
+            if (
+                task.status != WorkflowTaskStatus.CLAIMED.value
+                or task.assignee_id is None
+            ):
+                raise InvalidWorkflowTaskState(
+                    f"cannot transfer unclaimed task: {task.id}"
+                )
+            if task.assignee_id == target_user_id:
+                raise InvalidWorkflowTaskState(
+                    f"target user already owns task: {task.id}"
+                )
+            previous_assignee_id = task.assignee_id
+            task.assignee_id = target_user_id
+            task.claimed_at = self.clock()
+            task.candidate_rule_json = {
+                "candidate_type": CandidateType.USER.value,
+                "user_id": target_user_id,
+            }
+            self.repository.add(
+                WorkflowTaskHistory(
+                    task_id=task.id,
+                    action="TRANSFER",
+                    operator_id=operator_id,
+                    payload_json={
+                        "previous_assignee_id": previous_assignee_id,
+                        "target_assignee_id": target_user_id,
+                    },
+                )
+            )
+            self.repository.commit()
+            self.repository.refresh(task)
+            return task
+        except Exception:
+            self.repository.rollback()
+            raise
+
     def review_workorder(
         self,
         work_order_id: int,

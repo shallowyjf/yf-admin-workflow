@@ -114,7 +114,7 @@ def _raise_http(error: Exception) -> None:
     elif isinstance(error, IAMEntityNotFound):
         status_code = status.HTTP_404_NOT_FOUND
     elif isinstance(error, IAMAdministrationValidationError):
-        status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+        status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
     else:
         status_code = status.HTTP_409_CONFLICT
     raise HTTPException(status_code=status_code, detail=str(error)) from error

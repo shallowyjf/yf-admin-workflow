@@ -189,3 +189,68 @@ def test_service_and_router_do_not_assign_status_directly() -> None:
         Path("app/workorder/repository.py"),
     ):
         assert ".status =" not in path.read_text(encoding="utf-8")
+
+
+def test_transfer_comment_and_urge_are_permission_checked_and_audited(
+    work_order_environment: tuple[IAMService, WorkOrderService, WorkOrderRepository],
+) -> None:
+    iam, service, repository = work_order_environment
+    manager = _actor(iam, "zhangsan", "PIPE_OPERATION")
+    lisi = _actor(iam, "lisi", "PIPE_OPERATION")
+    zhaoliu = _actor(iam, "zhaoliu", "PIPE_OPERATION")
+    wangwu = iam.get_user("wangwu")
+    assert wangwu is not None
+
+    work_order = service.create(_command("协作能力验收"), manager)
+    service.add_comment(work_order.id, manager, "  建单后补充现场联系人  ")
+    with pytest.raises(InvalidWorkOrderTransition):
+        service.urge(work_order.id, manager, "草稿不能催办")
+
+    service.submit(work_order.id, manager)
+    service.dispatch(work_order.id, manager.active_org_id, manager)
+    service.claim(work_order.id, lisi)
+    service.urge(work_order.id, manager, "请在 30 分钟内反馈")
+
+    with pytest.raises(WorkOrderValidationError, match="active handler"):
+        service.transfer(work_order.id, wangwu.id, manager)
+    transferred = service.transfer(
+        work_order.id,
+        zhaoliu.user_id,
+        manager,
+        "李四下班，转赵六继续处理",
+    )
+
+    assert transferred.current_assignee_id == zhaoliu.user_id
+    with pytest.raises(WorkOrderNotFound):
+        service.add_comment(work_order.id, lisi, "转派后不再可见")
+    comment = service.add_comment(work_order.id, zhaoliu, "已接手处理")
+    assert comment.comment == "已接手处理"
+    actions = repository.list_actions(work_order.id)
+    assert [item.action_type for item in actions] == [
+        "CREATE",
+        "COMMENT",
+        "SUBMIT",
+        "DISPATCH",
+        "CLAIM",
+        "URGE",
+        "TRANSFER",
+        "COMMENT",
+    ]
+    assert actions[1].comment == "建单后补充现场联系人"
+    assert actions[-2].payload_json == {
+        "previous_assignee_id": lisi.user_id,
+        "target_assignee_id": zhaoliu.user_id,
+    }
+
+
+def test_comment_validation_rejects_blank_and_oversized_text(
+    work_order_environment: tuple[IAMService, WorkOrderService, WorkOrderRepository],
+) -> None:
+    iam, service, _ = work_order_environment
+    manager = _actor(iam, "zhangsan", "PIPE_OPERATION")
+    work_order = service.create(_command("评论校验"), manager)
+
+    with pytest.raises(WorkOrderValidationError, match="blank"):
+        service.add_comment(work_order.id, manager, "   ")
+    with pytest.raises(WorkOrderValidationError, match="1000"):
+        service.add_comment(work_order.id, manager, "x" * 1001)

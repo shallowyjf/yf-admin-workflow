@@ -22,6 +22,9 @@ class WorkOrderActionType(StrEnum):
     REJECT = "REJECT"
     APPROVE = "APPROVE"
     CLOSE = "CLOSE"
+    TRANSFER = "TRANSFER"
+    COMMENT = "COMMENT"
+    URGE = "URGE"
 
 
 class WorkOrderError(Exception):

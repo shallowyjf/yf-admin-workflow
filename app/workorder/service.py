@@ -8,6 +8,7 @@ from typing import Protocol
 from app.iam.authorization import PermissionService, WorkOrderScopeFilter
 
 from .domain import (
+    InvalidWorkOrderTransition,
     WorkOrderActionType,
     WorkOrderNotFound,
     WorkOrderPermissionDenied,
@@ -69,6 +70,13 @@ class WorkflowActionPort(Protocol):
         payload: dict | None = None,
     ) -> object: ...
 
+    def transfer_workorder(
+        self,
+        work_order_id: int,
+        operator_id: int,
+        target_user_id: int,
+    ) -> object: ...
+
     def review_workorder(
         self,
         work_order_id: int,
@@ -81,6 +89,14 @@ class WorkflowActionPort(Protocol):
 class WorkOrderService:
     VIEW_PERMISSION = "workorder:view"
     CREATE_PERMISSION = "workorder:create"
+    COLLABORATION_STATUSES = frozenset(
+        {
+            WorkOrderStatus.PENDING_DISPATCH.value,
+            WorkOrderStatus.PENDING_CLAIM.value,
+            WorkOrderStatus.PROCESSING.value,
+            WorkOrderStatus.PENDING_REVIEW.value,
+        }
+    )
 
     def __init__(
         self,
@@ -278,6 +294,109 @@ class WorkOrderService:
         self.repository.refresh(work_order)
         return work_order
 
+    def transfer(
+        self,
+        work_order_id: int,
+        target_user_id: int,
+        actor: WorkOrderActor,
+        comment: str | None = None,
+    ) -> WorkOrder:
+        if target_user_id <= 0:
+            raise WorkOrderValidationError("target_user_id must be positive")
+        work_order = self._get_for_action(
+            work_order_id,
+            actor,
+            "workorder:transfer",
+        )
+        if not self.permission_service.has_permission(
+            target_user_id,
+            "workorder:handle",
+            work_order.current_org_id,
+        ):
+            raise WorkOrderValidationError(
+                "target user must be an active handler in the current organization"
+            )
+        previous_assignee_id = work_order.transfer(target_user_id)
+        normalized_comment = self._optional_comment(comment)
+        self._record_action(
+            work_order,
+            WorkOrderActionType.TRANSFER,
+            actor.user_id,
+            work_order.status,
+            work_order.status,
+            comment=normalized_comment,
+            payload={
+                "previous_assignee_id": previous_assignee_id,
+                "target_assignee_id": target_user_id,
+            },
+        )
+        if self.workflow_actions is None:
+            self.repository.commit()
+        else:
+            self.workflow_actions.transfer_workorder(
+                work_order.id,
+                actor.user_id,
+                target_user_id,
+            )
+        self.repository.refresh(work_order)
+        return work_order
+
+    def add_comment(
+        self,
+        work_order_id: int,
+        actor: WorkOrderActor,
+        comment: str,
+    ) -> WorkOrderAction:
+        work_order = self._get_for_action(
+            work_order_id,
+            actor,
+            "workorder:comment",
+            include_owner_org=True,
+        )
+        normalized_comment = self._required_comment(comment)
+        self._record_action(
+            work_order,
+            WorkOrderActionType.COMMENT,
+            actor.user_id,
+            work_order.status,
+            work_order.status,
+            comment=normalized_comment,
+        )
+        self.repository.commit()
+        return self.repository.list_actions(work_order.id)[-1]
+
+    def urge(
+        self,
+        work_order_id: int,
+        actor: WorkOrderActor,
+        comment: str,
+    ) -> WorkOrderAction:
+        work_order = self._get_for_action(
+            work_order_id,
+            actor,
+            "workorder:urge",
+            include_owner_org=True,
+        )
+        if work_order.status not in self.COLLABORATION_STATUSES:
+            raise InvalidWorkOrderTransition(
+                f"cannot URGE work order from {work_order.status}"
+            )
+        normalized_comment = self._required_comment(comment)
+        self._record_action(
+            work_order,
+            WorkOrderActionType.URGE,
+            actor.user_id,
+            work_order.status,
+            work_order.status,
+            comment=normalized_comment,
+            payload={
+                "current_org_id": work_order.current_org_id,
+                "current_assignee_id": work_order.current_assignee_id,
+            },
+        )
+        self.repository.commit()
+        return self.repository.list_actions(work_order.id)[-1]
+
     def review(
         self,
         work_order_id: int,
@@ -417,6 +536,22 @@ class WorkOrderService:
                 payload_json=payload,
             )
         )
+
+    @staticmethod
+    def _optional_comment(comment: str | None) -> str | None:
+        if comment is None:
+            return None
+        normalized = comment.strip()
+        if len(normalized) > 1000:
+            raise WorkOrderValidationError("comment must not exceed 1000 characters")
+        return normalized or None
+
+    @classmethod
+    def _required_comment(cls, comment: str) -> str:
+        normalized = cls._optional_comment(comment)
+        if normalized is None:
+            raise WorkOrderValidationError("comment must not be blank")
+        return normalized
 
     def _require_permission(
         self,

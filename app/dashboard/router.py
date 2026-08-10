@@ -194,7 +194,7 @@ def _friendly_error(
         error,
         (IAMAdministrationValidationError, ValueError, WorkOrderValidationError),
     ):
-        code = status.HTTP_422_UNPROCESSABLE_ENTITY
+        code = status.HTTP_422_UNPROCESSABLE_CONTENT
         title = "提交内容不完整"
     else:
         code = status.HTTP_409_CONFLICT
@@ -1087,6 +1087,22 @@ async def work_order_action_page(
             actor,
             values.get("result", ""),
             values.get("comment") or None,
+        ),
+        "transfer": lambda: service.work_order_service.transfer(
+            work_order_id,
+            int(values.get("target_user_id", "")),
+            actor,
+            values.get("comment") or None,
+        ),
+        "comment": lambda: service.work_order_service.add_comment(
+            work_order_id,
+            actor,
+            values.get("comment", ""),
+        ),
+        "urge": lambda: service.work_order_service.urge(
+            work_order_id,
+            actor,
+            values.get("comment", ""),
         ),
         "review": lambda: service.work_order_service.review(
             work_order_id,

@@ -32,6 +32,9 @@
 | Work order | `POST /api/workorders/{id}/dispatch` | 派单 |
 | Work order | `POST /api/workorders/{id}/claim` | 候选人认领 |
 | Work order | `POST /api/workorders/{id}/result` | 提交处理结果 |
+| Work order | `POST /api/workorders/{id}/transfer` | 将处理中工单转给当前组织的有效处理人 |
+| Work order | `POST /api/workorders/{id}/comments` | 追加协作评论 |
+| Work order | `POST /api/workorders/{id}/urge` | 对在途工单发起催办并留痕 |
 | Work order | `POST /api/workorders/{id}/review` | 通过或驳回 |
 | Work order | `POST /api/workorders/{id}/close` | 关闭 |
 | Work order | `GET /api/workorders/{id}/timeline` | 动作时间线 |

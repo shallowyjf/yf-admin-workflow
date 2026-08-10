@@ -35,6 +35,19 @@ STATUS_LABELS = {
     "COMPLETED": "已完成",
     "CLOSED": "已关闭",
 }
+ACTION_LABELS = {
+    "CREATE": "创建工单",
+    "SUBMIT": "提交工单",
+    "DISPATCH": "派单",
+    "CLAIM": "认领",
+    "SUBMIT_RESULT": "提交处理结果",
+    "TRANSFER": "转派",
+    "COMMENT": "协作评论",
+    "URGE": "催办",
+    "REJECT": "驳回返工",
+    "APPROVE": "复核通过",
+    "CLOSE": "关闭工单",
+}
 
 
 class DashboardService:
@@ -107,6 +120,7 @@ class DashboardService:
             "profile": profile,
             "navigation": navigation,
             "status_labels": STATUS_LABELS,
+            "action_labels": ACTION_LABELS,
         }
 
     def dashboard(self, profile: AuthProfile) -> dict:
@@ -279,6 +293,16 @@ class DashboardService:
                 for organization in self.iam_service.list_organizations()
                 if organization.is_active
             ],
+            "transfer_targets": [
+                user
+                for user in self.iam_service.list_users()
+                if user.id != work_order.current_assignee_id
+                and self.permission_service.has_permission(
+                    user.id,
+                    "workorder:handle",
+                    work_order.current_org_id,
+                )
+            ],
         }
 
     def my_tasks(self, profile: AuthProfile) -> dict:
@@ -347,6 +371,18 @@ class DashboardService:
             actions.add("review")
         if work_order.status == "COMPLETED" and "workorder:close" in permissions:
             actions.add("close")
+        if "workorder:comment" in permissions:
+            actions.add("comment")
+        if (
+            work_order.status in WorkOrderService.COLLABORATION_STATUSES
+            and "workorder:urge" in permissions
+        ):
+            actions.add("urge")
+        if (
+            work_order.status == "PROCESSING"
+            and "workorder:transfer" in permissions
+        ):
+            actions.add("transfer")
         return actions
 
     def _task_candidate_labels(

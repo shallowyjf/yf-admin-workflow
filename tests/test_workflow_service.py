@@ -369,3 +369,40 @@ def test_task_actions_record_claim_complete_return_and_assignment_history(
         "CREATE",
         "ASSIGN",
     ]
+
+
+def test_transfer_reassigns_claimed_handle_task_and_records_history(
+    workflow_environment: tuple[IAMService, WorkflowService],
+    db_session: Session,
+) -> None:
+    iam_service, workflow_service = workflow_environment
+    wangwu_id = _user_id(iam_service, "wangwu")
+    lisi_id = _user_id(iam_service, "lisi")
+    zhaoliu_id = _user_id(iam_service, "zhaoliu")
+    pipe_org_id = _org_id(iam_service, "PIPE_OPERATION")
+    workflow_service.start_submitted_workorder(2004, wangwu_id)
+    workflow_service.dispatch_workorder(2004, wangwu_id, pipe_org_id)
+    workflow_service.claim_workorder(2004, lisi_id)
+
+    transferred = workflow_service.transfer_workorder(
+        2004,
+        wangwu_id,
+        zhaoliu_id,
+    )
+
+    assert transferred.status == "CLAIMED"
+    assert transferred.assignee_id == zhaoliu_id
+    assert transferred.candidate_rule_json == {
+        "candidate_type": "USER",
+        "user_id": zhaoliu_id,
+    }
+    transfer_history = db_session.scalars(
+        select(WorkflowTaskHistory)
+        .where(WorkflowTaskHistory.action == "TRANSFER")
+        .order_by(WorkflowTaskHistory.id)
+    ).one()
+    assert transfer_history.operator_id == wangwu_id
+    assert transfer_history.payload_json == {
+        "previous_assignee_id": lisi_id,
+        "target_assignee_id": zhaoliu_id,
+    }

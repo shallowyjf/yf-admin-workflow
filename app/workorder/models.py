@@ -10,7 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 from app.db.mixins import IdTimestampMixin
 
-from .domain import WorkOrderActionType, WorkOrderStatus
+from .domain import InvalidWorkOrderTransition, WorkOrderActionType, WorkOrderStatus
 from .state_machine import WorkOrderStateMachine
 
 
@@ -80,6 +80,20 @@ class WorkOrder(IdTimestampMixin, Base):
 
     def submit_result(self) -> tuple[str, str]:
         return self._transition(WorkOrderActionType.SUBMIT_RESULT)
+
+    def transfer(self, target_user_id: int) -> int:
+        if (
+            self.status != WorkOrderStatus.PROCESSING.value
+            or self.current_assignee_id is None
+        ):
+            raise InvalidWorkOrderTransition(
+                f"cannot TRANSFER work order from {self.status}"
+            )
+        if self.current_assignee_id == target_user_id:
+            raise InvalidWorkOrderTransition("target user is already the assignee")
+        previous_assignee_id = self.current_assignee_id
+        self.current_assignee_id = target_user_id
+        return previous_assignee_id
 
     def reject(self) -> tuple[str, str]:
         return self._transition(WorkOrderActionType.REJECT)

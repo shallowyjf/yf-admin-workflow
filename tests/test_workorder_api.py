@@ -253,3 +253,105 @@ def test_i08_task_actions_enforce_access_and_state_transitions(
     assert closed.json()["status"] == "CLOSED"
     assert closed.json()["completed_at"] is not None
     assert closed.json()["closed_at"] is not None
+
+
+def test_i16_transfer_comment_and_urge_keep_workflow_and_timeline_consistent(
+    work_order_client: TestClient,
+) -> None:
+    wangwu = _login(work_order_client, "wangwu")
+    pipe_org_id = _org_id(wangwu, "PIPE_OPERATION")
+    work_order_id = _create(work_order_client, "I16 协作工单").json()["id"]
+    work_order_client.post(f"/api/workorders/{work_order_id}/submit", json={})
+    work_order_client.post(
+        f"/api/workorders/{work_order_id}/dispatch",
+        json={"target_org_id": pipe_org_id},
+    )
+
+    lisi = _login(work_order_client, "lisi")
+    lisi_id = lisi["user_id"]
+    claimed = work_order_client.post(
+        f"/api/workorders/{work_order_id}/claim",
+        json={"comment": "李四认领"},
+    )
+    assert claimed.status_code == 200
+
+    zhaoliu = _login(work_order_client, "zhaoliu")
+    zhaoliu_id = zhaoliu["user_id"]
+    admin = _login(work_order_client, "admin")
+    admin_id = admin["user_id"]
+
+    _login(work_order_client, "zhangsan")
+    comment = work_order_client.post(
+        f"/api/workorders/{work_order_id}/comments",
+        json={"comment": "  阀门间钥匙已交接  "},
+    )
+    assert comment.status_code == 201
+    assert comment.json()["action_type"] == "COMMENT"
+    assert comment.json()["comment"] == "阀门间钥匙已交接"
+    urged = work_order_client.post(
+        f"/api/workorders/{work_order_id}/urge",
+        json={"comment": "请在 30 分钟内反馈"},
+    )
+    assert urged.status_code == 201
+    assert urged.json()["payload_json"] == {
+        "current_org_id": pipe_org_id,
+        "current_assignee_id": lisi_id,
+    }
+    invalid_target = work_order_client.post(
+        f"/api/workorders/{work_order_id}/transfer",
+        json={"target_user_id": admin_id},
+    )
+    assert invalid_target.status_code == 422
+
+    transferred = work_order_client.post(
+        f"/api/workorders/{work_order_id}/transfer",
+        json={
+            "target_user_id": zhaoliu_id,
+            "comment": "李四交班，转赵六",
+        },
+    )
+    assert transferred.status_code == 200
+    assert transferred.json()["status"] == "PROCESSING"
+    assert transferred.json()["current_assignee_id"] == zhaoliu_id
+
+    _login(work_order_client, "lisi")
+    assert work_order_client.get("/api/tasks/mine").json() == []
+    assert (
+        work_order_client.post(
+            f"/api/workorders/{work_order_id}/comments",
+            json={"comment": "已转出"},
+        ).status_code
+        == 404
+    )
+
+    _login(work_order_client, "zhaoliu")
+    tasks = work_order_client.get("/api/tasks/mine").json()
+    assert len(tasks) == 1
+    assert tasks[0]["status"] == "CLAIMED"
+    assert tasks[0]["assignee_id"] == zhaoliu_id
+    assert (
+        work_order_client.post(
+            f"/api/workorders/{work_order_id}/result",
+            json={"result": "赵六完成现场处理"},
+        ).status_code
+        == 200
+    )
+
+    _login(work_order_client, "zhangsan")
+    timeline = work_order_client.get(
+        f"/api/workorders/{work_order_id}/timeline"
+    ).json()
+    assert [item["action_type"] for item in timeline] == [
+        "CREATE",
+        "SUBMIT",
+        "DISPATCH",
+        "CLAIM",
+        "COMMENT",
+        "URGE",
+        "TRANSFER",
+        "SUBMIT_RESULT",
+    ]
+    assert timeline[-2]["payload_json"] == {
+        "previous_assignee_id": lisi_id,
+        "target_assignee_id": zhaoliu_id,
+    }

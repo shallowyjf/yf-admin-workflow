@@ -187,6 +187,63 @@ def test_ui_completes_standard_dma_work_order_flow(ui_client: TestClient) -> Non
         assert action in closed.text
 
 
+def test_i16_work_order_detail_exposes_collaboration_actions(
+    ui_client: TestClient,
+) -> None:
+    wangwu = _login(ui_client, "wangwu")
+    pipe_org_id = next(
+        org["id"]
+        for org in wangwu["organizations"]
+        if org["org_code"] == "PIPE_OPERATION"
+    )
+    created = ui_client.post(
+        "/api/workorders",
+        json={"title": "I16 页面协作", "type": "REPAIR"},
+    ).json()
+    work_order_id = created["id"]
+    ui_client.post(f"/api/workorders/{work_order_id}/submit", json={})
+    ui_client.post(
+        f"/api/workorders/{work_order_id}/dispatch",
+        json={"target_org_id": pipe_org_id},
+    )
+    _login(ui_client, "lisi")
+    ui_client.post(f"/api/workorders/{work_order_id}/claim", json={})
+    zhaoliu = _login(ui_client, "zhaoliu")
+
+    _login(ui_client, "zhangsan")
+    detail_path = f"/workorders/{work_order_id}"
+    detail = ui_client.get(detail_path)
+    assert 'data-testid="action-transfer"' in detail.text
+    assert 'data-testid="action-comment"' in detail.text
+    assert 'data-testid="action-urge"' in detail.text
+    assert "抢修人员 @zhaoliu" in detail.text
+
+    assert ui_client.post(
+        f"/ui/workorders/{work_order_id}/comment",
+        data={"comment": "页面追加协作记录"},
+        follow_redirects=False,
+    ).status_code == 303
+    assert ui_client.post(
+        f"/ui/workorders/{work_order_id}/urge",
+        data={"comment": "页面催办"},
+        follow_redirects=False,
+    ).status_code == 303
+    assert ui_client.post(
+        f"/ui/workorders/{work_order_id}/transfer",
+        data={
+            "target_user_id": str(zhaoliu["user_id"]),
+            "comment": "页面转派",
+        },
+        follow_redirects=False,
+    ).status_code == 303
+
+    updated = ui_client.get(detail_path)
+    assert "协作评论 · COMMENT" in updated.text
+    assert "催办 · URGE" in updated.text
+    assert "转派 · TRANSFER" in updated.text
+    assert "页面转派" in updated.text
+
+
 def test_templates_do_not_encode_stable_permission_codes() -> None:
     from pathlib import Path
 

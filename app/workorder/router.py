@@ -29,8 +29,10 @@ from .schemas import (
     ReviewWorkOrderRequest,
     SubmitResultRequest,
     SubmitWorkOrderRequest,
+    TransferWorkOrderRequest,
     WorkOrderActionRequest,
     WorkOrderActionResponse,
+    WorkOrderCommentRequest,
     WorkOrderResponse,
 )
 from .service import CreateWorkOrderCommand, WorkOrderActor, WorkOrderService
@@ -90,7 +92,7 @@ def _raise_http(error: Exception) -> None:
     elif isinstance(error, WorkOrderNotFound):
         status_code = status.HTTP_404_NOT_FOUND
     elif isinstance(error, WorkOrderValidationError):
-        status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+        status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
     else:
         status_code = status.HTTP_409_CONFLICT
     raise HTTPException(status_code=status_code, detail=str(error)) from error
@@ -206,6 +208,69 @@ def submit_work_order_result(
     except (WorkOrderError, WorkflowError) as error:
         _raise_http(error)
     return _order_response(work_order)
+
+
+@router.post("/{work_order_id}/transfer", response_model=WorkOrderResponse)
+def transfer_work_order(
+    work_order_id: int,
+    command: TransferWorkOrderRequest,
+    context: Annotated[RequestContext, Depends(get_request_context)],
+    service: Annotated[WorkOrderService, Depends(get_work_order_service)],
+) -> WorkOrderResponse:
+    try:
+        work_order = service.transfer(
+            work_order_id,
+            command.target_user_id,
+            _actor(context),
+            command.comment,
+        )
+    except (WorkOrderError, WorkflowError) as error:
+        _raise_http(error)
+    return _order_response(work_order)
+
+
+@router.post(
+    "/{work_order_id}/comments",
+    response_model=WorkOrderActionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_work_order_comment(
+    work_order_id: int,
+    command: WorkOrderCommentRequest,
+    context: Annotated[RequestContext, Depends(get_request_context)],
+    service: Annotated[WorkOrderService, Depends(get_work_order_service)],
+) -> WorkOrderActionResponse:
+    try:
+        action = service.add_comment(
+            work_order_id,
+            _actor(context),
+            command.comment,
+        )
+    except WorkOrderError as error:
+        _raise_http(error)
+    return _action_response(action)
+
+
+@router.post(
+    "/{work_order_id}/urge",
+    response_model=WorkOrderActionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def urge_work_order(
+    work_order_id: int,
+    command: WorkOrderCommentRequest,
+    context: Annotated[RequestContext, Depends(get_request_context)],
+    service: Annotated[WorkOrderService, Depends(get_work_order_service)],
+) -> WorkOrderActionResponse:
+    try:
+        action = service.urge(
+            work_order_id,
+            _actor(context),
+            command.comment,
+        )
+    except WorkOrderError as error:
+        _raise_http(error)
+    return _action_response(action)
 
 
 @router.post("/{work_order_id}/review", response_model=WorkOrderResponse)

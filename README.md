@@ -1,6 +1,6 @@
 # 统一权限与流程工单平台 Python Demo
 
-这是正式系统前的可运行架构原型，用于逐轮验证 IAM、功能权限、数据范围、CandidateResolver、WorkflowTask 与 WorkOrder 的领域边界。当前代码已完成 **I15：V0.1 Demo Release 冻结**。
+这是正式系统前的可运行架构原型，用于逐轮验证 IAM、功能权限、数据范围、CandidateResolver、WorkflowTask 与 WorkOrder 的领域边界。当前代码已完成 **I16：工单转派、协作评论与催办**，进入 P1 可用业务产品优先路线。
 
 ## 环境
 
@@ -76,6 +76,6 @@ Copy-Item .env.example .env
 
 ## 当前边界
 
-V0.1 已形成组织、用户、角色、岗位、权限、数据范围和 IAM 审计配置闭环，并可执行标准 DMA 工单闭环。它仍是本地 Demo：认证安全加固、授权变更治理、工单转派/附件/通知/SLA、并发幂等、不可篡改审计和生产运维属于进入真实试点前的后续范围。
+V0.1 已形成组织、用户、角色、岗位、权限、数据范围和 IAM 审计配置闭环，并可执行标准 DMA 工单闭环。I16 进一步补齐处理中工单转派、协作评论和催办留痕。它仍是本地 Demo：认证安全加固、授权变更治理、附件/通知/SLA、并发幂等、不可篡改审计和生产运维属于进入真实试点前的后续范围。
 
-Demo 用户为 `admin`、`wangwu`、`zhangsan`、`lisi`、`zhaoliu`，初始密码统一为 `Demo@123456`，仅限本地演示。候选人解析演示可运行 `.\.venv\Scripts\python.exe -m app.demo.candidate_demo`。设计约束见 `AI_CODING_RULES.md`，本轮验收见 `docs/iterations/I15.md`。
+Demo 用户为 `admin`、`wangwu`、`zhangsan`、`lisi`、`zhaoliu`，初始密码统一为 `Demo@123456`，仅限本地演示。候选人解析演示可运行 `.\.venv\Scripts\python.exe -m app.demo.candidate_demo`。设计约束见 `AI_CODING_RULES.md`，本轮验收见 `docs/iterations/I16.md`。
