@@ -1,4 +1,30 @@
-{% extends "base.html" %}{% block content %}
-<section class="page-intro"><div><h2>岗位字典</h2><p>岗位用于表达组织内职责，可参与流程候选人解析。</p></div><button class="button primary" disabled title="本轮提供查询演示">新增岗位</button></section>
-<section class="card-grid small">{% for position in positions %}<article class="entity-card"><div class="entity-title"><span class="role-icon">P</span><span><strong>{{ position.position_name }}</strong><small>{{ position.position_code }}</small></span><span class="status">{{ '启用' if position.is_active else '停用' }}</span></div><p class="muted">已绑定 {{ position.membership_links|length }} 个用户组织关系</p></article>{% endfor %}</section>
+{% extends "base.html" %}
+{% block content %}
+<section class="page-intro">
+  <div><h2>岗位字典</h2><p>岗位表达组织内职责，并可参与流程候选人解析；编码创建后保持不变。</p></div>
+  {% if position_capabilities.create %}<button class="button primary" type="button" onclick="document.querySelector('#create-position-panel').toggleAttribute('hidden')" data-testid="create-position">新增岗位</button>{% endif %}
+</section>
+{% if position_capabilities.create %}
+<section id="create-position-panel" class="panel form-panel" hidden>
+  <div class="panel-head"><div><p class="eyebrow">NEW POSITION</p><h2>新增岗位</h2></div></div>
+  <form method="post" action="/ui/positions" class="form-grid">
+    <label>岗位编码<input name="position_code" placeholder="例如 FIELD_SUPERVISOR" pattern="[A-Za-z][A-Za-z0-9_]+" required></label>
+    <label>岗位名称<input name="position_name" required></label>
+    <div class="span-2 form-actions"><button class="button primary" type="submit">创建岗位</button></div>
+  </form>
+</section>
+{% endif %}
+<section class="card-grid small">
+{% for position in positions %}
+  <article class="entity-card">
+    <div class="entity-title"><span class="role-icon">P</span><span><strong>{{ position.position_name }}</strong><small>{{ position.position_code }}</small></span><span class="status">{{ '启用' if position.is_active else '停用' }}</span></div>
+    <p class="muted">已绑定 {{ position.membership_links|length }} 个用户组织关系</p>
+    <div class="user-actions">
+      {% if position_capabilities.update %}<details><summary class="button ghost">编辑</summary><form method="post" action="/ui/positions/{{ position.id }}/update" class="detail-form"><label>岗位名称<input name="position_name" value="{{ position.position_name }}" required></label><button class="button primary" type="submit">保存</button></form></details>{% endif %}
+      {% if position_capabilities.status %}<form method="post" action="/ui/positions/{{ position.id }}/status"><input type="hidden" name="is_active" value="{{ 'false' if position.is_active else 'true' }}"><button class="button {{ 'danger' if position.is_active else 'ghost' }}" type="submit">{{ '停用' if position.is_active else '启用' }}</button></form>{% endif %}
+      {% if position_capabilities.delete %}<form method="post" action="/ui/positions/{{ position.id }}/delete"><button class="button danger" type="submit">删除</button></form>{% endif %}
+    </div>
+  </article>
+{% endfor %}
+</section>
 {% endblock %}

@@ -3,8 +3,18 @@
 from collections import Counter
 
 from app.auth.service import AuthProfile
-from app.iam.admin_service import OrganizationAdministrationService
+from app.iam.admin_service import (
+    IAMAdministrationActor,
+    OrganizationAdministrationService,
+)
 from app.iam.authorization import PermissionService
+from app.iam.dictionary_admin_service import (
+    IAMAuditFilter,
+    IAMAuditQueryService,
+    PermissionDictionaryService,
+    PositionAdministrationService,
+)
+from app.iam.permission_catalog import BUILT_IN_PERMISSION_CODES
 from app.iam.role_admin_service import RoleAdministrationService
 from app.iam.service import IAMService
 from app.iam.user_admin_service import UserAdministrationService
@@ -34,6 +44,7 @@ class DashboardService:
         "roles": "system:role:view",
         "positions": "system:position:view",
         "permissions": "system:permission:view",
+        "audit": "system:audit:view",
     }
 
     def __init__(
@@ -45,6 +56,9 @@ class DashboardService:
         organization_admin_service: OrganizationAdministrationService,
         user_admin_service: UserAdministrationService,
         role_admin_service: RoleAdministrationService,
+        position_admin_service: PositionAdministrationService,
+        permission_dictionary_service: PermissionDictionaryService,
+        iam_audit_query_service: IAMAuditQueryService,
     ) -> None:
         self.iam_service = iam_service
         self.permission_service = permission_service
@@ -53,6 +67,9 @@ class DashboardService:
         self.organization_admin_service = organization_admin_service
         self.user_admin_service = user_admin_service
         self.role_admin_service = role_admin_service
+        self.position_admin_service = position_admin_service
+        self.permission_dictionary_service = permission_dictionary_service
+        self.iam_audit_query_service = iam_audit_query_service
 
     def common_context(
         self,
@@ -77,6 +94,7 @@ class DashboardService:
             ("roles", "角色管理", "/iam/roles"),
             ("positions", "岗位管理", "/iam/positions"),
             ("permissions", "权限管理", "/iam/permissions"),
+            ("audit", "IAM 审计", "/iam/audit"),
         ]
         navigation.extend(
             {"code": code, "label": label, "href": href}
@@ -197,11 +215,38 @@ class DashboardService:
 
     def positions(self, profile: AuthProfile) -> dict:
         self._require_system_page(profile, "positions")
-        return {"positions": self.iam_service.list_positions()}
+        permissions = set(profile.permission_codes)
+        return {
+            "positions": self.iam_service.list_positions(),
+            "position_capabilities": {
+                "create": "system:position:create" in permissions,
+                "update": "system:position:update" in permissions,
+                "status": "system:position:status" in permissions,
+                "delete": "system:position:delete" in permissions,
+            },
+        }
 
     def permissions(self, profile: AuthProfile) -> dict:
         self._require_system_page(profile, "permissions")
-        return {"permissions": self.iam_service.list_permissions()}
+        permissions = set(profile.permission_codes)
+        return {
+            "permissions": self.iam_service.list_permissions(),
+            "built_in_permission_codes": BUILT_IN_PERMISSION_CODES,
+            "permission_capabilities": {
+                "create": "system:permission:create" in permissions,
+                "update": "system:permission:update" in permissions,
+                "delete": "system:permission:delete" in permissions,
+            },
+        }
+
+    def audit_logs(
+        self,
+        profile: AuthProfile,
+        filters: IAMAuditFilter,
+    ) -> dict:
+        self._require_system_page(profile, "audit")
+        logs = self.iam_audit_query_service.list_logs(filters, self._iam_actor(profile))
+        return {"audit_logs": logs, "audit_filters": filters}
 
     def work_orders(self, profile: AuthProfile) -> dict:
         actor = self._actor(profile)
@@ -253,6 +298,10 @@ class DashboardService:
     @staticmethod
     def _actor(profile: AuthProfile) -> WorkOrderActor:
         return WorkOrderActor(profile.user_id, profile.active_org_id)
+
+    @staticmethod
+    def _iam_actor(profile: AuthProfile) -> IAMAdministrationActor:
+        return IAMAdministrationActor(profile.user_id, profile.active_org_id)
 
     def _require_system_page(self, profile: AuthProfile, page: str) -> None:
         permission_code = self.SYSTEM_PAGES[page]

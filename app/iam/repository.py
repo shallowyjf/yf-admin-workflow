@@ -120,6 +120,39 @@ class IAMRepository:
             )
         )
 
+    def list_iam_audit_logs_filtered(
+        self,
+        *,
+        entity_type: str | None = None,
+        entity_id: int | None = None,
+        action: str | None = None,
+        operator_username: str | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> list[IAMAuditLog]:
+        statement = select(IAMAuditLog).options(selectinload(IAMAuditLog.operator))
+        if entity_type is not None:
+            statement = statement.where(IAMAuditLog.entity_type == entity_type)
+        if entity_id is not None:
+            statement = statement.where(IAMAuditLog.entity_id == entity_id)
+        if action is not None:
+            statement = statement.where(IAMAuditLog.action == action)
+        if operator_username is not None:
+            statement = statement.join(
+                User,
+                User.id == IAMAuditLog.operator_id,
+            ).where(User.username == operator_username)
+        return list(
+            self.session.scalars(
+                statement.order_by(
+                    IAMAuditLog.created_at.desc(),
+                    IAMAuditLog.id.desc(),
+                )
+                .offset(offset)
+                .limit(limit)
+            )
+        )
+
     def get_role_by_code(self, role_code: str) -> Role | None:
         return self.session.scalar(select(Role).where(Role.role_code == role_code))
 
@@ -140,9 +173,33 @@ class IAMRepository:
             select(Position).where(Position.position_code == position_code)
         )
 
+    def get_position(self, position_id: int) -> Position | None:
+        return self.session.scalar(
+            select(Position)
+            .where(Position.id == position_id)
+            .options(selectinload(Position.membership_links))
+        )
+
     def get_permission_by_code(self, permission_code: str) -> Permission | None:
         return self.session.scalar(
             select(Permission).where(Permission.permission_code == permission_code)
+        )
+
+    def get_permission(self, permission_id: int) -> Permission | None:
+        return self.session.scalar(
+            select(Permission)
+            .where(Permission.id == permission_id)
+            .options(selectinload(Permission.role_links))
+        )
+
+    def count_permission_data_scopes(self, permission_code: str) -> int:
+        return int(
+            self.session.scalar(
+                select(func.count())
+                .select_from(RoleDataScope)
+                .where(RoleDataScope.permission_code == permission_code)
+            )
+            or 0
         )
 
     def get_membership(self, user_id: int, org_id: int) -> UserOrganization | None:
@@ -432,6 +489,8 @@ class IAMRepository:
     def list_permissions(self) -> list[Permission]:
         return list(
             self.session.scalars(
-                select(Permission).order_by(Permission.permission_code)
+                select(Permission)
+                .options(selectinload(Permission.role_links))
+                .order_by(Permission.permission_code)
             )
         )

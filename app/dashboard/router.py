@@ -33,6 +33,16 @@ from app.iam.admin_service import (
     UpdateOrganizationCommand,
 )
 from app.iam.authorization import PermissionService
+from app.iam.dictionary_admin_service import (
+    CreatePermissionCommand,
+    CreatePositionCommand,
+    IAMAuditFilter,
+    IAMAuditQueryService,
+    PermissionDictionaryService,
+    PositionAdministrationService,
+    UpdatePermissionCommand,
+    UpdatePositionCommand,
+)
 from app.iam.repository import IAMRepository
 from app.iam.role_admin_service import (
     CreateRoleCommand,
@@ -49,6 +59,7 @@ from app.iam.user_admin_service import (
 )
 from app.workflow.domain import TaskAccessDenied, WorkflowError
 from app.workflow.factory import build_workflow_service
+from app.workflow.repository import WorkflowRepository
 from app.workorder.domain import (
     WorkOrderError,
     WorkOrderNotFound,
@@ -114,6 +125,13 @@ def get_dashboard_service(
             AuthSessionRevocationService(AuthRepository(session)),
         ),
         RoleAdministrationService(iam_repository, permission_service),
+        PositionAdministrationService(
+            iam_repository,
+            permission_service,
+            WorkflowRepository(session),
+        ),
+        PermissionDictionaryService(iam_repository, permission_service),
+        IAMAuditQueryService(iam_repository, permission_service),
     )
 
 
@@ -281,6 +299,42 @@ def permissions_page(
     service: Annotated[DashboardService, Depends(get_dashboard_service)],
 ) -> HTMLResponse:
     return _iam_page(request, identity, service, "permissions", "权限管理")
+
+
+@router.get("/iam/audit", response_class=HTMLResponse, include_in_schema=False)
+def iam_audit_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse:
+    entity_id_value = request.query_params.get("entity_id", "").strip()
+    try:
+        filters = IAMAuditFilter(
+            entity_type=request.query_params.get("entity_type") or None,
+            entity_id=int(entity_id_value) if entity_id_value else None,
+            action=request.query_params.get("action") or None,
+            operator_username=(
+                request.query_params.get("operator_username") or None
+            ),
+            limit=100,
+        )
+        data = service.audit_logs(identity.profile, filters)
+    except (
+        IAMAdministrationPermissionDenied,
+        IAMAdministrationValidationError,
+        PageAccessDenied,
+        ValueError,
+    ) as error:
+        return _friendly_error(request, service, identity, error)
+    return _page(
+        request,
+        service,
+        identity,
+        "audit.html",
+        "IAM 审计",
+        "audit",
+        data,
+    )
 
 
 @router.get("/workorders", response_class=HTMLResponse, include_in_schema=False)
@@ -788,6 +842,192 @@ async def replace_role_authorization_page(
     ) as error:
         return _friendly_error(request, service, identity, error)
     return RedirectResponse("/iam/roles", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/ui/positions", include_in_schema=False, response_model=None)
+async def create_position_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse | RedirectResponse:
+    values = await _form(request)
+    try:
+        service.position_admin_service.create(
+            CreatePositionCommand(
+                position_code=values.get("position_code", ""),
+                position_name=values.get("position_name", ""),
+            ),
+            _iam_actor(identity),
+        )
+    except (
+        DuplicateIAMCode,
+        IAMAdministrationPermissionDenied,
+        IAMAdministrationValidationError,
+    ) as error:
+        return _friendly_error(request, service, identity, error)
+    return RedirectResponse("/iam/positions", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post(
+    "/ui/positions/{position_id}/update",
+    include_in_schema=False,
+    response_model=None,
+)
+async def update_position_page(
+    request: Request,
+    position_id: int,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse | RedirectResponse:
+    values = await _form(request)
+    try:
+        service.position_admin_service.update(
+            position_id,
+            UpdatePositionCommand(
+                position_name=values.get("position_name", ""),
+            ),
+            _iam_actor(identity),
+        )
+    except (
+        IAMAdministrationPermissionDenied,
+        IAMAdministrationValidationError,
+        IAMEntityNotFound,
+    ) as error:
+        return _friendly_error(request, service, identity, error)
+    return RedirectResponse("/iam/positions", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post(
+    "/ui/positions/{position_id}/status",
+    include_in_schema=False,
+    response_model=None,
+)
+async def position_status_page(
+    request: Request,
+    position_id: int,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse | RedirectResponse:
+    values = await _form(request)
+    try:
+        service.position_admin_service.set_active(
+            position_id,
+            values.get("is_active", "").lower() == "true",
+            _iam_actor(identity),
+        )
+    except (
+        IAMAdministrationPermissionDenied,
+        IAMEntityNotFound,
+    ) as error:
+        return _friendly_error(request, service, identity, error)
+    return RedirectResponse("/iam/positions", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post(
+    "/ui/positions/{position_id}/delete",
+    include_in_schema=False,
+    response_model=None,
+)
+def delete_position_page(
+    request: Request,
+    position_id: int,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse | RedirectResponse:
+    try:
+        service.position_admin_service.delete(
+            position_id,
+            _iam_actor(identity),
+        )
+    except (
+        IAMAdministrationConflict,
+        IAMAdministrationPermissionDenied,
+        IAMEntityNotFound,
+    ) as error:
+        return _friendly_error(request, service, identity, error)
+    return RedirectResponse("/iam/positions", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/ui/permissions", include_in_schema=False, response_model=None)
+async def create_permission_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse | RedirectResponse:
+    values = await _form(request)
+    try:
+        service.permission_dictionary_service.create(
+            CreatePermissionCommand(
+                permission_code=values.get("permission_code", ""),
+                permission_name=values.get("permission_name", ""),
+                resource_type=values.get("resource_type") or None,
+                description=values.get("description") or None,
+            ),
+            _iam_actor(identity),
+        )
+    except (
+        DuplicateIAMCode,
+        IAMAdministrationPermissionDenied,
+        IAMAdministrationValidationError,
+    ) as error:
+        return _friendly_error(request, service, identity, error)
+    return RedirectResponse("/iam/permissions", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post(
+    "/ui/permissions/{permission_id}/update",
+    include_in_schema=False,
+    response_model=None,
+)
+async def update_permission_page(
+    request: Request,
+    permission_id: int,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse | RedirectResponse:
+    values = await _form(request)
+    try:
+        service.permission_dictionary_service.update(
+            permission_id,
+            UpdatePermissionCommand(
+                permission_name=values.get("permission_name", ""),
+                resource_type=values.get("resource_type") or None,
+                description=values.get("description") or None,
+            ),
+            _iam_actor(identity),
+        )
+    except (
+        IAMAdministrationPermissionDenied,
+        IAMAdministrationValidationError,
+        IAMEntityNotFound,
+    ) as error:
+        return _friendly_error(request, service, identity, error)
+    return RedirectResponse("/iam/permissions", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post(
+    "/ui/permissions/{permission_id}/delete",
+    include_in_schema=False,
+    response_model=None,
+)
+def delete_permission_page(
+    request: Request,
+    permission_id: int,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse | RedirectResponse:
+    try:
+        service.permission_dictionary_service.delete(
+            permission_id,
+            _iam_actor(identity),
+        )
+    except (
+        IAMAdministrationConflict,
+        IAMAdministrationPermissionDenied,
+        IAMEntityNotFound,
+    ) as error:
+        return _friendly_error(request, service, identity, error)
+    return RedirectResponse("/iam/permissions", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/ui/workorders", include_in_schema=False, response_model=None)

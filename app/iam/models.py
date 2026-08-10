@@ -96,6 +96,8 @@ class IAMAuditLog(IdTimestampMixin, Base):
     )
     payload_json: Mapped[dict | None] = mapped_column(JSON)
 
+    operator: Mapped[User | None] = relationship()
+
 
 class Role(IdTimestampMixin, Base):
     __tablename__ = "sys_role"

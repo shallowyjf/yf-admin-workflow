@@ -1,5 +1,7 @@
 """IAM organization administration HTTP schemas."""
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 from .authorization import DataScopeType
@@ -132,3 +134,58 @@ class RoleResponse(BaseModel):
     role_type: str | None
     is_active: bool
     authorization: list[RolePermissionScopeResponse]
+
+
+class CreatePositionRequest(BaseModel):
+    position_code: str = Field(min_length=2, max_length=80)
+    position_name: str = Field(min_length=1, max_length=120)
+
+
+class UpdatePositionRequest(BaseModel):
+    position_name: str = Field(min_length=1, max_length=120)
+
+
+class PositionStatusRequest(BaseModel):
+    is_active: bool
+
+
+class PositionResponse(BaseModel):
+    id: int
+    position_code: str
+    position_name: str
+    is_active: bool
+    membership_count: int
+
+
+class CreatePermissionRequest(BaseModel):
+    permission_code: str = Field(min_length=3, max_length=120)
+    permission_name: str = Field(min_length=1, max_length=160)
+    resource_type: str | None = Field(default=None, max_length=40)
+    description: str | None = Field(default=None, max_length=1000)
+
+
+class UpdatePermissionRequest(BaseModel):
+    permission_name: str = Field(min_length=1, max_length=160)
+    resource_type: str | None = Field(default=None, max_length=40)
+    description: str | None = Field(default=None, max_length=1000)
+
+
+class PermissionResponse(BaseModel):
+    id: int
+    permission_code: str
+    permission_name: str
+    resource_type: str | None
+    description: str | None
+    role_count: int
+
+
+class IAMAuditLogResponse(BaseModel):
+    id: int
+    entity_type: str
+    entity_id: int
+    action: str
+    operator_id: int | None
+    operator_username: str | None
+    operator_display_name: str | None
+    payload: dict | None
+    created_at: datetime

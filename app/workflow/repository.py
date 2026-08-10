@@ -59,6 +59,39 @@ class WorkflowRepository:
             )
         )
 
+    def count_position_references(self, position_code: str) -> int:
+        """Count workflow JSON records that retain a position-code reference."""
+
+        payloads = list(
+            self.session.scalars(select(WorkflowDefinition.definition_json))
+        )
+        payloads.extend(
+            self.session.scalars(select(WorkflowTask.candidate_rule_json))
+        )
+        payloads.extend(
+            self.session.scalars(select(WorkflowTaskCandidate.candidate_value))
+        )
+        return sum(
+            1
+            for payload in payloads
+            if self._contains_position_code(payload, position_code)
+        )
+
+    @classmethod
+    def _contains_position_code(cls, value: object, position_code: str) -> bool:
+        if isinstance(value, dict):
+            if value.get("position_code") == position_code:
+                return True
+            return any(
+                cls._contains_position_code(item, position_code)
+                for item in value.values()
+            )
+        if isinstance(value, list):
+            return any(
+                cls._contains_position_code(item, position_code) for item in value
+            )
+        return False
+
     def get_instance_for_business(
         self,
         business_type: str,

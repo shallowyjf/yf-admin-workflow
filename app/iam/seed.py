@@ -7,6 +7,7 @@ from app.core.config import get_settings
 from app.db.session import Database
 
 from .authorization import DataScopeType
+from .permission_catalog import PERMISSIONS
 from .repository import IAMRepository
 from .service import IAMService
 
@@ -37,34 +38,6 @@ POSITIONS = (
     ("REPAIRER", "抢修人员"),
 )
 DEMO_INITIAL_PASSWORD = "Demo@123456"
-PERMISSIONS = (
-    ("system:org:view", "查看组织", "SYSTEM"),
-    ("system:user:view", "查看用户", "SYSTEM"),
-    ("system:role:view", "查看角色", "SYSTEM"),
-    ("system:position:view", "查看岗位", "SYSTEM"),
-    ("system:permission:view", "查看权限", "SYSTEM"),
-    ("system:org:create", "新建组织", "SYSTEM"),
-    ("system:org:update", "编辑组织", "SYSTEM"),
-    ("system:org:status", "启停组织", "SYSTEM"),
-    ("system:org:delete", "删除组织", "SYSTEM"),
-    ("system:user:create", "新建用户", "SYSTEM"),
-    ("system:user:update", "编辑用户", "SYSTEM"),
-    ("system:user:status", "启停用户", "SYSTEM"),
-    ("system:user:password", "重置用户密码", "SYSTEM"),
-    ("system:user:membership", "配置用户组织关系", "SYSTEM"),
-    ("system:role:create", "新增角色", "SYSTEM"),
-    ("system:role:update", "编辑角色", "SYSTEM"),
-    ("system:role:status", "启停角色", "SYSTEM"),
-    ("system:role:authorize", "配置角色授权", "SYSTEM"),
-    ("workorder:view", "查看工单", "WORKORDER"),
-    ("workorder:create", "创建工单", "WORKORDER"),
-    ("workorder:dispatch", "派单", "WORKORDER"),
-    ("workorder:claim", "认领工单", "WORKORDER"),
-    ("workorder:handle", "处理工单", "WORKORDER"),
-    ("workorder:transfer", "转派工单", "WORKORDER"),
-    ("workorder:review", "复核工单", "WORKORDER"),
-    ("workorder:close", "关闭工单", "WORKORDER"),
-)
 ROLE_POLICIES = {
     "SYSTEM_ADMIN": (
         tuple(code for code, _, _ in PERMISSIONS),
@@ -112,9 +85,9 @@ class SeedSummary:
     users: int = 5
     roles: int = 5
     positions: int = 3
-    permissions: int = 26
-    role_permissions: int = 43
-    data_scopes: int = 43
+    permissions: int = 34
+    role_permissions: int = 51
+    data_scopes: int = 51
 
 
 def seed_iam(service: IAMService) -> SeedSummary:

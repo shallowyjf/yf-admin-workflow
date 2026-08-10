@@ -154,3 +154,23 @@
   height: 18px;
   width: 18px;
 }
+
+.audit-filters {
+  flex-wrap: wrap;
+}
+
+.audit-filters label {
+  min-width: 150px;
+}
+
+.audit-payload {
+  background: #f8fafb;
+  border-radius: 7px;
+  font-size: 10px;
+  margin: 0;
+  max-height: 110px;
+  max-width: 520px;
+  overflow: auto;
+  padding: 8px;
+  white-space: pre-wrap;
+}
