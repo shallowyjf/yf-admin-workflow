@@ -63,6 +63,8 @@
 
 ## I15：质量门禁、架构 Review 与 V0.1 冻结
 
+状态：已完成。
+
 交付范围：
 
 - 补齐 Unit、Service Integration、API/UI E2E 边界用例。

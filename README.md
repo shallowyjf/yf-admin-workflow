@@ -1,6 +1,6 @@
 # 统一权限与流程工单平台 Python Demo
 
-这是正式系统前的可运行架构原型，用于逐轮验证 IAM、功能权限、数据范围、CandidateResolver、WorkflowTask 与 WorkOrder 的领域边界。当前代码完成 **I14：岗位、权限字典与 IAM 审计联调**。
+这是正式系统前的可运行架构原型，用于逐轮验证 IAM、功能权限、数据范围、CandidateResolver、WorkflowTask 与 WorkOrder 的领域边界。当前代码已完成 **I15：V0.1 Demo Release 冻结**。
 
 ## 环境
 
@@ -38,9 +38,15 @@ Copy-Item .env.example .env
 ## 回归测试与质量检查
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest -W error
-.\.venv\Scripts\python.exe -m ruff check app tests migrations
-.\.venv\Scripts\python.exe -m alembic check
+.\.venv\Scripts\python.exe scripts\quality_gate.py
+```
+
+门禁统一执行 Ruff、敏感信息检查、`pytest -W error`、90% 覆盖率阈值和 Alembic 漂移检查。GitHub Actions 对每次 Push 和 Pull Request 执行同一命令。
+
+空库发布验收（迁移、Seed、IAM 配置生效及 DMA 闭环）：
+
+```powershell
+.\.venv\Scripts\python.exe -m app.demo.release_smoke
 ```
 
 ## 标准 DMA 演示
@@ -61,8 +67,15 @@ Copy-Item .env.example .env
 
 页面提供登录、工作台、六个 IAM 管理与审计视图、工单列表、工单详情和我的任务共 11 个核心视图。组织、用户、角色、岗位和权限均已形成配置闭环；IAM 审计支持按实体、动作和操作人过滤。导航和动作按钮由服务层按有效权限计算，隐藏按钮不替代接口二次鉴权。
 
+## V0.1 文档
+
+- [Release 与人工验收](docs/RELEASE_V0.1.md)
+- [API 清单](docs/API_V0.1.md)
+- [架构 Review](docs/ARCHITECTURE_REVIEW_V0.1.md)
+- [权限系统与工单中心差距评估](docs/PRODUCT_GAP_ASSESSMENT.md)
+
 ## 当前边界
 
-I14 完成五类 IAM 配置联调。岗位编码和 Permission 编码创建后不可修改；岗位删除同时检查成员关系和流程 JSON 引用，内置权限不可删除，自定义权限只有在未被角色授权和 DataScope 引用时才能删除。I15 将执行质量门禁、架构 Review 和 V0.1 冻结。
+V0.1 已形成组织、用户、角色、岗位、权限、数据范围和 IAM 审计配置闭环，并可执行标准 DMA 工单闭环。它仍是本地 Demo：认证安全加固、授权变更治理、工单转派/附件/通知/SLA、并发幂等、不可篡改审计和生产运维属于进入真实试点前的后续范围。
 
-Demo 用户为 `admin`、`wangwu`、`zhangsan`、`lisi`、`zhaoliu`，初始密码统一为 `Demo@123456`，仅限本地演示。候选人解析演示可运行 `.\.venv\Scripts\python.exe -m app.demo.candidate_demo`。设计约束见 `AI_CODING_RULES.md`，本轮验收见 `docs/iterations/I14.md`。
+Demo 用户为 `admin`、`wangwu`、`zhangsan`、`lisi`、`zhaoliu`，初始密码统一为 `Demo@123456`，仅限本地演示。候选人解析演示可运行 `.\.venv\Scripts\python.exe -m app.demo.candidate_demo`。设计约束见 `AI_CODING_RULES.md`，本轮验收见 `docs/iterations/I15.md`。
