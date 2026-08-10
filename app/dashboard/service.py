@@ -18,8 +18,10 @@ from app.iam.permission_catalog import BUILT_IN_PERMISSION_CODES
 from app.iam.role_admin_service import RoleAdministrationService
 from app.iam.service import IAMService
 from app.iam.user_admin_service import UserAdministrationService
+from app.notification.service import NotificationService
 from app.workflow.models import WorkflowTask
 from app.workflow.service import WorkflowService
+from app.workorder.attachment_service import WorkOrderAttachmentService
 from app.workorder.domain import WorkOrderPermissionDenied
 from app.workorder.models import WorkOrder
 from app.workorder.service import WorkOrderActor, WorkOrderService
@@ -44,6 +46,9 @@ ACTION_LABELS = {
     "TRANSFER": "转派",
     "COMMENT": "协作评论",
     "URGE": "催办",
+    "ATTACHMENT_UPLOAD": "上传附件",
+    "SLA_RESPONSE_BREACH": "响应超时",
+    "SLA_RESOLUTION_BREACH": "解决超时",
     "REJECT": "驳回返工",
     "APPROVE": "复核通过",
     "CLOSE": "关闭工单",
@@ -72,6 +77,8 @@ class DashboardService:
         position_admin_service: PositionAdministrationService,
         permission_dictionary_service: PermissionDictionaryService,
         iam_audit_query_service: IAMAuditQueryService,
+        attachment_service: WorkOrderAttachmentService,
+        notification_service: NotificationService,
     ) -> None:
         self.iam_service = iam_service
         self.permission_service = permission_service
@@ -83,6 +90,8 @@ class DashboardService:
         self.position_admin_service = position_admin_service
         self.permission_dictionary_service = permission_dictionary_service
         self.iam_audit_query_service = iam_audit_query_service
+        self.attachment_service = attachment_service
+        self.notification_service = notification_service
 
     def common_context(
         self,
@@ -100,6 +109,19 @@ class DashboardService:
             )
         navigation.append(
             {"code": "tasks", "label": "我的任务", "href": "/tasks/mine"}
+        )
+        notifications = self.notification_service.list_for_user(profile.user_id)
+        unread_notifications = sum(
+            item.status == "UNREAD" for item in notifications
+        )
+        navigation.append(
+            {
+                "code": "notifications",
+                "label": f"通知 ({unread_notifications})"
+                if unread_notifications
+                else "通知",
+                "href": "/notifications",
+            }
         )
         system_navigation = [
             ("organizations", "组织管理", "/iam/organizations"),
@@ -121,6 +143,7 @@ class DashboardService:
             "navigation": navigation,
             "status_labels": STATUS_LABELS,
             "action_labels": ACTION_LABELS,
+            "unread_notifications": unread_notifications,
         }
 
     def dashboard(self, profile: AuthProfile) -> dict:
@@ -267,6 +290,8 @@ class DashboardService:
         return {
             "work_orders": self.work_order_service.list_visible(actor),
             "can_create": "workorder:create" in profile.permission_codes,
+            "can_evaluate_sla": "workorder:sla:evaluate"
+            in profile.permission_codes,
         }
 
     def work_order_detail(
@@ -303,6 +328,19 @@ class DashboardService:
                     work_order.current_org_id,
                 )
             ],
+            "attachments": self.attachment_service.list_for_work_order(
+                work_order.id,
+                actor,
+            ),
+            "can_upload_attachment": "workorder:attachment"
+            in profile.permission_codes,
+        }
+
+    def notifications(self, profile: AuthProfile) -> dict:
+        return {
+            "notifications": self.notification_service.list_for_user(
+                profile.user_id
+            )
         }
 
     def my_tasks(self, profile: AuthProfile) -> dict:

@@ -35,9 +35,14 @@
 | Work order | `POST /api/workorders/{id}/transfer` | 将处理中工单转给当前组织的有效处理人 |
 | Work order | `POST /api/workorders/{id}/comments` | 追加协作评论 |
 | Work order | `POST /api/workorders/{id}/urge` | 对在途工单发起催办并留痕 |
+| Work order | `POST /api/workorders/sla/evaluate` | 在当前数据范围内执行 SLA 超时检查与升级 |
+| Attachment | `POST/GET /api/workorders/{id}/attachments` | 安全上传、查询附件 |
+| Attachment | `GET /api/workorders/{id}/attachments/{attachment_id}/download` | 数据范围鉴权后下载已通过扫描的附件 |
 | Work order | `POST /api/workorders/{id}/review` | 通过或驳回 |
 | Work order | `POST /api/workorders/{id}/close` | 关闭 |
 | Work order | `GET /api/workorders/{id}/timeline` | 动作时间线 |
 | Workflow | `GET /api/tasks/mine` | 当前用户候选/已分配任务 |
+| Notification | `GET /api/notifications` | 当前用户站内通知 |
+| Notification | `POST /api/notifications/{id}/read` | 通知已读回执 |
 
 OpenAPI 是请求字段、返回结构与状态码的唯一机器可读契约。本文件用于发布范围导航，不复制 Schema。

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Annotated
 from urllib.parse import parse_qs
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, File, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -57,9 +57,12 @@ from app.iam.user_admin_service import (
     UpdateUserCommand,
     UserAdministrationService,
 )
+from app.notification.repository import NotificationRepository
+from app.notification.service import NotificationNotFound, NotificationService
 from app.workflow.domain import TaskAccessDenied, WorkflowError
 from app.workflow.factory import build_workflow_service
 from app.workflow.repository import WorkflowRepository
+from app.workorder.attachment_service import WorkOrderAttachmentService
 from app.workorder.domain import (
     WorkOrderError,
     WorkOrderNotFound,
@@ -108,10 +111,13 @@ def get_dashboard_service(
     iam_repository = IAMRepository(session)
     permission_service = PermissionService(iam_repository)
     workflow_service = build_workflow_service(session)
+    notification_service = NotificationService(NotificationRepository(session))
+    work_order_repository = WorkOrderRepository(session)
     work_order_service = WorkOrderService(
-        WorkOrderRepository(session),
+        work_order_repository,
         permission_service,
         workflow_service,
+        notification_service,
     )
     return DashboardService(
         IAMService(iam_repository),
@@ -132,6 +138,8 @@ def get_dashboard_service(
         ),
         PermissionDictionaryService(iam_repository, permission_service),
         IAMAuditQueryService(iam_repository, permission_service),
+        WorkOrderAttachmentService(work_order_repository, permission_service),
+        notification_service,
     )
 
 
@@ -187,7 +195,10 @@ def _friendly_error(
     ):
         code = status.HTTP_403_FORBIDDEN
         title = "没有访问权限"
-    elif isinstance(error, (IAMEntityNotFound, WorkOrderNotFound)):
+    elif isinstance(
+        error,
+        (IAMEntityNotFound, NotificationNotFound, WorkOrderNotFound),
+    ):
         code = status.HTTP_404_NOT_FOUND
         title = "没有找到工单"
     elif isinstance(
@@ -389,6 +400,44 @@ def my_tasks_page(
         "tasks",
         service.my_tasks(identity.profile),
     )
+
+
+@router.get("/notifications", response_class=HTMLResponse, include_in_schema=False)
+def notifications_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse:
+    return _page(
+        request,
+        service,
+        identity,
+        "notifications.html",
+        "通知中心",
+        "notifications",
+        service.notifications(identity.profile),
+    )
+
+
+@router.post(
+    "/ui/notifications/{notification_id}/read",
+    include_in_schema=False,
+    response_model=None,
+)
+def read_notification_page(
+    request: Request,
+    notification_id: int,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse | RedirectResponse:
+    try:
+        service.notification_service.mark_read(
+            notification_id,
+            identity.profile.user_id,
+        )
+    except NotificationNotFound as error:
+        return _friendly_error(request, service, identity, error)
+    return RedirectResponse("/notifications", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/logout", include_in_schema=False)
@@ -1052,6 +1101,53 @@ async def create_work_order_page(
         return _friendly_error(request, service, identity, error)
     return RedirectResponse(
         f"/workorders/{work_order.id}", status_code=status.HTTP_303_SEE_OTHER
+    )
+
+
+@router.post(
+    "/ui/workorders/sla/evaluate",
+    include_in_schema=False,
+    response_model=None,
+)
+def evaluate_sla_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse | RedirectResponse:
+    try:
+        service.work_order_service.evaluate_sla(_actor(identity))
+    except WorkOrderError as error:
+        return _friendly_error(request, service, identity, error)
+    return RedirectResponse("/workorders", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post(
+    "/ui/workorders/{work_order_id}/attachments",
+    include_in_schema=False,
+    response_model=None,
+)
+async def upload_attachment_page(
+    request: Request,
+    work_order_id: int,
+    file: Annotated[UploadFile, File()],
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse | RedirectResponse:
+    try:
+        service.attachment_service.upload(
+            work_order_id,
+            _actor(identity),
+            file.filename or "",
+            file.content_type or "application/octet-stream",
+            await file.read(WorkOrderAttachmentService.MAX_SIZE_BYTES + 1),
+        )
+    except WorkOrderError as error:
+        return _friendly_error(request, service, identity, error)
+    finally:
+        await file.close()
+    return RedirectResponse(
+        f"/workorders/{work_order_id}",
+        status_code=status.HTTP_303_SEE_OTHER,
     )
 
 

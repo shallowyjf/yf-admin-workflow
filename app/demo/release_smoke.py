@@ -38,6 +38,8 @@ from app.iam.user_admin_service import (
 )
 from app.workflow.repository import WorkflowRepository
 from app.workflow.seed import seed_workflow
+from app.workorder.repository import WorkOrderRepository
+from app.workorder.seed import seed_workorder
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -73,6 +75,7 @@ def run_release_smoke(database_url: str) -> ReleaseSmokeResult:
             seed_iam(iam_service)
             workflow_repository = WorkflowRepository(session)
             seed_workflow(workflow_repository)
+            seed_workorder(WorkOrderRepository(session))
 
             admin = repository.get_user_by_username("admin")
             group = repository.get_organization_by_code("GROUP")

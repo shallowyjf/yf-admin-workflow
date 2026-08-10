@@ -35,6 +35,8 @@ PERMISSIONS = (
     ("workorder:transfer", "转派工单", "WORKORDER"),
     ("workorder:comment", "评论工单", "WORKORDER"),
     ("workorder:urge", "催办工单", "WORKORDER"),
+    ("workorder:attachment", "管理工单附件", "WORKORDER"),
+    ("workorder:sla:evaluate", "执行 SLA 检查", "WORKORDER"),
     ("workorder:review", "复核工单", "WORKORDER"),
     ("workorder:close", "关闭工单", "WORKORDER"),
 )

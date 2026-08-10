@@ -355,3 +355,48 @@ def test_i16_transfer_comment_and_urge_keep_workflow_and_timeline_consistent(
         "previous_assignee_id": lisi_id,
         "target_assignee_id": zhaoliu_id,
     }
+
+
+def test_i17_urge_notification_is_recipient_owned_and_can_be_read(
+    work_order_client: TestClient,
+) -> None:
+    wangwu = _login(work_order_client, "wangwu")
+    pipe_org_id = _org_id(wangwu, "PIPE_OPERATION")
+    work_order_id = _create(work_order_client, "I17 通知工单").json()["id"]
+    work_order_client.post(f"/api/workorders/{work_order_id}/submit", json={})
+    work_order_client.post(
+        f"/api/workorders/{work_order_id}/dispatch",
+        json={"target_org_id": pipe_org_id},
+    )
+    _login(work_order_client, "lisi")
+    work_order_client.post(f"/api/workorders/{work_order_id}/claim", json={})
+
+    _login(work_order_client, "zhangsan")
+    urged = work_order_client.post(
+        f"/api/workorders/{work_order_id}/urge",
+        json={"comment": "请在今天完成"},
+    )
+    assert urged.status_code == 201
+
+    _login(work_order_client, "lisi")
+    inbox = work_order_client.get("/api/notifications")
+    assert inbox.status_code == 200
+    assert len(inbox.json()) == 1
+    notification = inbox.json()[0]
+    assert notification["event_type"] == "WORKORDER_URGED"
+    assert notification["status"] == "UNREAD"
+
+    _login(work_order_client, "zhaoliu")
+    assert (
+        work_order_client.post(
+            f"/api/notifications/{notification['id']}/read"
+        ).status_code
+        == 404
+    )
+    _login(work_order_client, "lisi")
+    read = work_order_client.post(
+        f"/api/notifications/{notification['id']}/read"
+    )
+    assert read.status_code == 200
+    assert read.json()["status"] == "READ"
+    assert read.json()["read_at"] is not None

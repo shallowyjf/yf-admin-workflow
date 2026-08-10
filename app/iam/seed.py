@@ -50,6 +50,8 @@ ROLE_POLICIES = {
             "workorder:dispatch",
             "workorder:comment",
             "workorder:urge",
+            "workorder:attachment",
+            "workorder:sla:evaluate",
             "workorder:review",
             "workorder:close",
         ),
@@ -63,6 +65,8 @@ ROLE_POLICIES = {
             "workorder:transfer",
             "workorder:comment",
             "workorder:urge",
+            "workorder:attachment",
+            "workorder:sla:evaluate",
             "workorder:close",
         ),
         DataScopeType.ORG_AND_CHILD,
@@ -74,6 +78,7 @@ ROLE_POLICIES = {
             "workorder:handle",
             "workorder:transfer",
             "workorder:comment",
+            "workorder:attachment",
         ),
         DataScopeType.SELF,
     ),
@@ -82,6 +87,8 @@ ROLE_POLICIES = {
             "workorder:view",
             "workorder:comment",
             "workorder:urge",
+            "workorder:attachment",
+            "workorder:sla:evaluate",
             "workorder:review",
             "workorder:close",
         ),
@@ -96,9 +103,9 @@ class SeedSummary:
     users: int = 5
     roles: int = 5
     positions: int = 3
-    permissions: int = 36
-    role_permissions: int = 60
-    data_scopes: int = 60
+    permissions: int = 38
+    role_permissions: int = 69
+    data_scopes: int = 69
 
 
 def seed_iam(service: IAMService) -> SeedSummary:

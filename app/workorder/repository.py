@@ -5,7 +5,12 @@ from sqlalchemy.orm import Session
 
 from app.iam.authorization import WorkOrderScopeFilter
 
-from .models import WorkOrder, WorkOrderAction
+from .models import (
+    WorkOrder,
+    WorkOrderAction,
+    WorkOrderAttachment,
+    WorkOrderSlaPolicy,
+)
 
 
 class WorkOrderRepository:
@@ -62,6 +67,34 @@ class WorkOrderRepository:
                 select(WorkOrderAction)
                 .where(WorkOrderAction.work_order_id == work_order_id)
                 .order_by(WorkOrderAction.created_at, WorkOrderAction.id)
+            )
+        )
+
+    def get_sla_policy(
+        self,
+        priority: str,
+        *,
+        active_only: bool = True,
+    ) -> WorkOrderSlaPolicy | None:
+        statement = select(WorkOrderSlaPolicy).where(
+            WorkOrderSlaPolicy.priority == priority
+        )
+        if active_only:
+            statement = statement.where(WorkOrderSlaPolicy.is_active.is_(True))
+        return self.session.scalar(statement)
+
+    def get_attachment(self, attachment_id: int) -> WorkOrderAttachment | None:
+        return self.session.get(WorkOrderAttachment, attachment_id)
+
+    def list_attachments(self, work_order_id: int) -> list[WorkOrderAttachment]:
+        return list(
+            self.session.scalars(
+                select(WorkOrderAttachment)
+                .where(WorkOrderAttachment.work_order_id == work_order_id)
+                .order_by(
+                    WorkOrderAttachment.created_at.desc(),
+                    WorkOrderAttachment.id.desc(),
+                )
             )
         )
 

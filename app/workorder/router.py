@@ -1,8 +1,9 @@
 """Authenticated work-order use-case endpoints."""
 
 from typing import Annotated
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.auth.router import get_request_context
@@ -10,9 +11,12 @@ from app.auth.service import RequestContext
 from app.db.dependencies import get_db_session
 from app.iam.authorization import PermissionService
 from app.iam.repository import IAMRepository
+from app.notification.repository import NotificationRepository
+from app.notification.service import NotificationService
 from app.workflow.domain import TaskAccessDenied, WorkflowError
 from app.workflow.factory import build_workflow_service
 
+from .attachment_service import WorkOrderAttachmentService
 from .domain import (
     InvalidWorkOrderTransition,
     WorkOrderError,
@@ -27,11 +31,13 @@ from .schemas import (
     CreateWorkOrderRequest,
     DispatchWorkOrderRequest,
     ReviewWorkOrderRequest,
+    SlaEvaluationResponse,
     SubmitResultRequest,
     SubmitWorkOrderRequest,
     TransferWorkOrderRequest,
     WorkOrderActionRequest,
     WorkOrderActionResponse,
+    WorkOrderAttachmentResponse,
     WorkOrderCommentRequest,
     WorkOrderResponse,
 )
@@ -47,6 +53,16 @@ def get_work_order_service(
         WorkOrderRepository(session),
         PermissionService(IAMRepository(session)),
         build_workflow_service(session),
+        NotificationService(NotificationRepository(session)),
+    )
+
+
+def get_attachment_service(
+    session: Annotated[Session, Depends(get_db_session)],
+) -> WorkOrderAttachmentService:
+    return WorkOrderAttachmentService(
+        WorkOrderRepository(session),
+        PermissionService(IAMRepository(session)),
     )
 
 
@@ -74,6 +90,9 @@ def _order_response(work_order: WorkOrder) -> WorkOrderResponse:
         latitude=work_order.latitude,
         description=work_order.description,
         due_at=work_order.due_at,
+        response_due_at=work_order.response_due_at,
+        responded_at=work_order.responded_at,
+        sla_status=work_order.sla_status,
         completed_at=work_order.completed_at,
         closed_at=work_order.closed_at,
         created_by=work_order.created_by,
@@ -271,6 +290,103 @@ def urge_work_order(
     except WorkOrderError as error:
         _raise_http(error)
     return _action_response(action)
+
+
+@router.post("/sla/evaluate", response_model=SlaEvaluationResponse)
+def evaluate_work_order_sla(
+    context: Annotated[RequestContext, Depends(get_request_context)],
+    service: Annotated[WorkOrderService, Depends(get_work_order_service)],
+) -> SlaEvaluationResponse:
+    try:
+        result = service.evaluate_sla(_actor(context))
+    except WorkOrderError as error:
+        _raise_http(error)
+    return SlaEvaluationResponse.model_validate(result, from_attributes=True)
+
+
+@router.post(
+    "/{work_order_id}/attachments",
+    response_model=WorkOrderAttachmentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_work_order_attachment(
+    work_order_id: int,
+    file: Annotated[UploadFile, File()],
+    context: Annotated[RequestContext, Depends(get_request_context)],
+    service: Annotated[
+        WorkOrderAttachmentService,
+        Depends(get_attachment_service),
+    ],
+) -> WorkOrderAttachmentResponse:
+    try:
+        attachment = service.upload(
+            work_order_id,
+            _actor(context),
+            file.filename or "",
+            file.content_type or "application/octet-stream",
+            await file.read(WorkOrderAttachmentService.MAX_SIZE_BYTES + 1),
+        )
+    except WorkOrderError as error:
+        _raise_http(error)
+    finally:
+        await file.close()
+    return WorkOrderAttachmentResponse.model_validate(
+        attachment,
+        from_attributes=True,
+    )
+
+
+@router.get(
+    "/{work_order_id}/attachments",
+    response_model=list[WorkOrderAttachmentResponse],
+)
+def list_work_order_attachments(
+    work_order_id: int,
+    context: Annotated[RequestContext, Depends(get_request_context)],
+    service: Annotated[
+        WorkOrderAttachmentService,
+        Depends(get_attachment_service),
+    ],
+) -> list[WorkOrderAttachmentResponse]:
+    try:
+        attachments = service.list_for_work_order(work_order_id, _actor(context))
+    except WorkOrderError as error:
+        _raise_http(error)
+    return [
+        WorkOrderAttachmentResponse.model_validate(item, from_attributes=True)
+        for item in attachments
+    ]
+
+
+@router.get("/{work_order_id}/attachments/{attachment_id}/download")
+def download_work_order_attachment(
+    work_order_id: int,
+    attachment_id: int,
+    context: Annotated[RequestContext, Depends(get_request_context)],
+    service: Annotated[
+        WorkOrderAttachmentService,
+        Depends(get_attachment_service),
+    ],
+) -> Response:
+    try:
+        attachment = service.download(
+            work_order_id,
+            attachment_id,
+            _actor(context),
+        )
+    except WorkOrderError as error:
+        _raise_http(error)
+    return Response(
+        content=attachment.content_blob,
+        media_type=attachment.content_type,
+        headers={
+            "Content-Disposition": (
+                "attachment; filename=attachment; "
+                f"filename*=UTF-8''{quote(attachment.filename)}"
+            ),
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.post("/{work_order_id}/review", response_model=WorkOrderResponse)

@@ -24,6 +24,7 @@ from app.iam.dictionary_router import router as iam_dictionary_router
 from app.iam.role_router import router as iam_role_router
 from app.iam.router import router as iam_router
 from app.iam.user_router import router as iam_user_router
+from app.notification.router import router as notification_router
 from app.system.repository import HealthRepository
 from app.system.router import router as system_router
 from app.system.service import HealthService
@@ -60,6 +61,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(iam_user_router)
     application.include_router(iam_role_router)
     application.include_router(iam_dictionary_router)
+    application.include_router(notification_router)
     application.include_router(work_order_router)
     application.include_router(workflow_router)
     application.include_router(dashboard_router)

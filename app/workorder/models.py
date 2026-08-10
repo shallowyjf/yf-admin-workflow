@@ -4,7 +4,20 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Index, String, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -52,6 +65,14 @@ class WorkOrder(IdTimestampMixin, Base):
     latitude: Mapped[float | None] = mapped_column(Float)
     description: Mapped[str | None] = mapped_column(Text)
     due_at: Mapped[datetime | None] = mapped_column(DateTime)
+    response_due_at: Mapped[datetime | None] = mapped_column(DateTime)
+    responded_at: Mapped[datetime | None] = mapped_column(DateTime)
+    sla_status: Mapped[str] = mapped_column(
+        String(40),
+        nullable=False,
+        default="NOT_APPLICABLE",
+        server_default=text("'NOT_APPLICABLE'"),
+    )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_by: Mapped[int] = mapped_column(
@@ -60,6 +81,10 @@ class WorkOrder(IdTimestampMixin, Base):
     )
 
     actions: Mapped[list[WorkOrderAction]] = relationship(
+        back_populates="work_order",
+        cascade="all, delete-orphan",
+    )
+    attachments: Mapped[list[WorkOrderAttachment]] = relationship(
         back_populates="work_order",
         cascade="all, delete-orphan",
     )
@@ -77,6 +102,12 @@ class WorkOrder(IdTimestampMixin, Base):
         transition = self._transition(WorkOrderActionType.CLAIM)
         self.current_assignee_id = user_id
         return transition
+
+    def mark_responded(self, occurred_at: datetime) -> None:
+        if self.responded_at is None:
+            self.responded_at = occurred_at
+        if self.response_due_at is not None and occurred_at > self.response_due_at:
+            self.sla_status = "RESPONSE_BREACHED"
 
     def submit_result(self) -> tuple[str, str]:
         return self._transition(WorkOrderActionType.SUBMIT_RESULT)
@@ -139,3 +170,46 @@ class WorkOrderAction(IdTimestampMixin, Base):
     payload_json: Mapped[dict | None] = mapped_column(JSON)
 
     work_order: Mapped[WorkOrder] = relationship(back_populates="actions")
+
+
+class WorkOrderSlaPolicy(IdTimestampMixin, Base):
+    __tablename__ = "wo_sla_policy"
+    __table_args__ = (
+        UniqueConstraint("priority", name="uq_wo_sla_policy_priority"),
+    )
+
+    priority: Mapped[str] = mapped_column(String(30), nullable=False)
+    response_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    resolve_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    calendar_code: Mapped[str] = mapped_column(String(40), nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("1"),
+    )
+
+
+class WorkOrderAttachment(IdTimestampMixin, Base):
+    __tablename__ = "wo_attachment"
+    __table_args__ = (
+        Index("ix_wo_attachment_work_order_id", "work_order_id"),
+        Index("ix_wo_attachment_sha256", "sha256"),
+    )
+
+    work_order_id: Mapped[int] = mapped_column(
+        ForeignKey("wo_work_order.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    uploader_id: Mapped[int] = mapped_column(
+        ForeignKey("sys_user.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    scan_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    content_blob: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+
+    work_order: Mapped[WorkOrder] = relationship(back_populates="attachments")

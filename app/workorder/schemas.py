@@ -71,6 +71,9 @@ class WorkOrderResponse(BaseModel):
     latitude: float | None
     description: str | None
     due_at: datetime | None
+    response_due_at: datetime | None
+    responded_at: datetime | None
+    sla_status: str
     completed_at: datetime | None
     closed_at: datetime | None
     created_by: int
@@ -87,3 +90,21 @@ class WorkOrderActionResponse(BaseModel):
     comment: str | None
     payload_json: dict | None
     created_at: datetime
+
+
+class WorkOrderAttachmentResponse(BaseModel):
+    id: int
+    work_order_id: int
+    uploader_id: int
+    filename: str
+    content_type: str
+    size_bytes: int
+    sha256: str
+    scan_status: str
+    created_at: datetime
+
+
+class SlaEvaluationResponse(BaseModel):
+    evaluated: int
+    response_breaches: int
+    resolution_breaches: int

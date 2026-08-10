@@ -18,12 +18,20 @@ from .domain import (
 from .models import WorkOrder, WorkOrderAction
 from .numbering import WorkOrderNumberService
 from .repository import WorkOrderRepository
+from .sla import DEFAULT_SLA_POLICIES, SlaCalendar
 
 
 @dataclass(frozen=True)
 class WorkOrderActor:
     user_id: int
     active_org_id: int
+
+
+@dataclass(frozen=True)
+class SlaEvaluationResult:
+    evaluated: int
+    response_breaches: int
+    resolution_breaches: int
 
 
 @dataclass(frozen=True)
@@ -86,6 +94,17 @@ class WorkflowActionPort(Protocol):
     ) -> object: ...
 
 
+class NotificationPort(Protocol):
+    def stage_work_order(
+        self,
+        user_id: int,
+        work_order_id: int,
+        event_type: str,
+        title: str,
+        content: str,
+    ) -> object: ...
+
+
 class WorkOrderService:
     VIEW_PERMISSION = "workorder:view"
     CREATE_PERMISSION = "workorder:create"
@@ -103,12 +122,14 @@ class WorkOrderService:
         repository: WorkOrderRepository,
         permission_service: PermissionService,
         workflow_actions: WorkflowActionPort | None = None,
+        notification_service: NotificationPort | None = None,
         *,
         clock: Callable[[], datetime] = datetime.now,
     ) -> None:
         self.repository = repository
         self.permission_service = permission_service
         self.workflow_actions = workflow_actions
+        self.notification_service = notification_service
         self.number_service = WorkOrderNumberService(repository)
         self.clock = clock
 
@@ -128,6 +149,41 @@ class WorkOrderService:
         if not priority:
             raise WorkOrderValidationError("priority must not be blank")
         now = self.clock()
+        sla_policy = self.repository.get_sla_policy(priority)
+        if sla_policy is None:
+            default_policy = next(
+                (
+                    item
+                    for item in DEFAULT_SLA_POLICIES
+                    if item.priority == priority
+                ),
+                next(
+                    item
+                    for item in DEFAULT_SLA_POLICIES
+                    if item.priority == "NORMAL"
+                ),
+            )
+            response_due_at = SlaCalendar.add_minutes(
+                now,
+                default_policy.response_minutes,
+                default_policy.calendar_code,
+            )
+            resolution_due_at = SlaCalendar.add_minutes(
+                now,
+                default_policy.resolve_minutes,
+                default_policy.calendar_code,
+            )
+        else:
+            response_due_at = SlaCalendar.add_minutes(
+                now,
+                sla_policy.response_minutes,
+                sla_policy.calendar_code,
+            )
+            resolution_due_at = SlaCalendar.add_minutes(
+                now,
+                sla_policy.resolve_minutes,
+                sla_policy.calendar_code,
+            )
         work_order = WorkOrder(
             work_order_no=self.number_service.next_number(now),
             title=title,
@@ -144,7 +200,9 @@ class WorkOrderService:
             longitude=command.longitude,
             latitude=command.latitude,
             description=command.description,
-            due_at=command.due_at,
+            due_at=command.due_at or resolution_due_at,
+            response_due_at=response_due_at,
+            sla_status="ON_TRACK",
             created_by=actor.user_id,
         )
         self.repository.add(work_order)
@@ -240,7 +298,9 @@ class WorkOrderService:
     ) -> WorkOrder:
         self._require_permission(actor, "workorder:claim")
         work_order = self._get(work_order_id)
+        occurred_at = self.clock()
         from_status, to_status = work_order.claim(actor.user_id)
+        work_order.mark_responded(occurred_at)
         self._record_action(
             work_order,
             WorkOrderActionType.CLAIM,
@@ -330,6 +390,13 @@ class WorkOrderService:
                 "target_assignee_id": target_user_id,
             },
         )
+        self._stage_notification(
+            target_user_id,
+            work_order,
+            "WORKORDER_TRANSFERRED",
+            "工单已转派给你",
+            normalized_comment or f"工单 {work_order.work_order_no} 已转派",
+        )
         if self.workflow_actions is None:
             self.repository.commit()
         else:
@@ -394,8 +461,91 @@ class WorkOrderService:
                 "current_assignee_id": work_order.current_assignee_id,
             },
         )
+        if work_order.current_assignee_id is not None:
+            self._stage_notification(
+                work_order.current_assignee_id,
+                work_order,
+                "WORKORDER_URGED",
+                "工单收到催办",
+                normalized_comment,
+            )
         self.repository.commit()
         return self.repository.list_actions(work_order.id)[-1]
+
+    def evaluate_sla(
+        self,
+        actor: WorkOrderActor,
+    ) -> SlaEvaluationResult:
+        permission_code = "workorder:sla:evaluate"
+        self._require_permission(actor, permission_code)
+        scope = self.permission_service.work_order_scope(
+            actor.user_id,
+            permission_code,
+            actor.active_org_id,
+        )
+        work_orders = self.repository.list_visible(scope)
+        now = self.clock()
+        response_breaches = 0
+        resolution_breaches = 0
+        terminal_statuses = {
+            WorkOrderStatus.COMPLETED.value,
+            WorkOrderStatus.CLOSED.value,
+        }
+        for work_order in work_orders:
+            if (
+                work_order.status not in terminal_statuses
+                and work_order.due_at is not None
+                and now > work_order.due_at
+                and work_order.sla_status != "RESOLUTION_BREACHED"
+            ):
+                work_order.sla_status = "RESOLUTION_BREACHED"
+                resolution_breaches += 1
+                self._record_action(
+                    work_order,
+                    WorkOrderActionType.SLA_RESOLUTION_BREACH,
+                    actor.user_id,
+                    work_order.status,
+                    work_order.status,
+                    comment="解决时限已超时",
+                    payload={"due_at": work_order.due_at.isoformat()},
+                )
+                self._stage_sla_notification(
+                    work_order,
+                    "SLA_RESOLUTION_BREACH",
+                    "工单解决时限已超时",
+                )
+            elif (
+                work_order.status not in terminal_statuses
+                and work_order.responded_at is None
+                and work_order.response_due_at is not None
+                and now > work_order.response_due_at
+                and work_order.sla_status == "ON_TRACK"
+            ):
+                work_order.sla_status = "RESPONSE_BREACHED"
+                response_breaches += 1
+                self._record_action(
+                    work_order,
+                    WorkOrderActionType.SLA_RESPONSE_BREACH,
+                    actor.user_id,
+                    work_order.status,
+                    work_order.status,
+                    comment="响应时限已超时",
+                    payload={
+                        "response_due_at": work_order.response_due_at.isoformat()
+                    },
+                )
+                self._stage_sla_notification(
+                    work_order,
+                    "SLA_RESPONSE_BREACH",
+                    "工单响应时限已超时",
+                )
+        if response_breaches or resolution_breaches:
+            self.repository.commit()
+        return SlaEvaluationResult(
+            evaluated=len(work_orders),
+            response_breaches=response_breaches,
+            resolution_breaches=resolution_breaches,
+        )
 
     def review(
         self,
@@ -552,6 +702,38 @@ class WorkOrderService:
         if normalized is None:
             raise WorkOrderValidationError("comment must not be blank")
         return normalized
+
+    def _stage_sla_notification(
+        self,
+        work_order: WorkOrder,
+        event_type: str,
+        title: str,
+    ) -> None:
+        recipient_id = work_order.current_assignee_id or work_order.created_by
+        self._stage_notification(
+            recipient_id,
+            work_order,
+            event_type,
+            title,
+            f"{work_order.work_order_no} · {work_order.title}",
+        )
+
+    def _stage_notification(
+        self,
+        user_id: int,
+        work_order: WorkOrder,
+        event_type: str,
+        title: str,
+        content: str,
+    ) -> None:
+        if self.notification_service is not None:
+            self.notification_service.stage_work_order(
+                user_id,
+                work_order.id,
+                event_type,
+                title,
+                content,
+            )
 
     def _require_permission(
         self,

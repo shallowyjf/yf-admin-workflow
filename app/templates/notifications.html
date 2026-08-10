@@ -1,0 +1,4 @@
+{% extends "base.html" %}{% block content %}
+<section class="page-intro"><div><h2>站内通知</h2><p>转派、催办和 SLA 超时事件会进入个人收件箱。</p></div></section>
+<section class="panel"><div class="stack-list">{% for item in notifications %}<div class="stack-item"><span class="task-type">{{ item.status }}</span><span><strong>{{ item.title }}</strong><small>{{ item.content }} · {{ item.event_type }} · {{ item.created_at.strftime('%Y-%m-%d %H:%M') }}</small></span>{% if item.status != 'READ' %}<form method="post" action="/ui/notifications/{{ item.id }}/read"><button class="button ghost" type="submit" data-testid="read-notification">标为已读</button></form>{% elif item.work_order_id %}<a href="/workorders/{{ item.work_order_id }}">查看工单</a>{% endif %}</div>{% else %}<div class="empty"><strong>暂无通知</strong><span>新的转派、催办或 SLA 超时会显示在这里。</span></div>{% endfor %}</div></section>
+{% endblock %}

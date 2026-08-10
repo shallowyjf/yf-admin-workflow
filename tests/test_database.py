@@ -11,6 +11,7 @@ def test_shared_declarative_base_contains_current_tables() -> None:
     assert set(Base.metadata.tables) == {
         "sys_auth_session",
         "sys_iam_audit_log",
+        "sys_notification",
         "sys_org",
         "sys_permission",
         "sys_position",
@@ -27,7 +28,9 @@ def test_shared_declarative_base_contains_current_tables() -> None:
         "wf_task_candidate",
         "wf_task_history",
         "wo_action",
+        "wo_attachment",
         "wo_work_order",
+        "wo_sla_policy",
     }
 
 
@@ -171,4 +174,31 @@ def test_i11_migration_creates_and_removes_iam_audit_table(
 
     command.downgrade(config, "0006_i07")
     assert "sys_iam_audit_log" not in inspect(engine).get_table_names()
+    engine.dispose()
+
+
+def test_i17_migration_creates_sla_attachment_and_notification_schema(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "i17.db"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    config = Config("alembic.ini")
+    config.set_main_option("sqlalchemy.url", database_url)
+
+    command.upgrade(config, "0008_i17")
+    engine = create_engine(database_url)
+    inspector = inspect(engine)
+    assert {"wo_sla_policy", "wo_attachment", "sys_notification"} <= set(
+        inspector.get_table_names()
+    )
+    work_order_columns = {
+        column["name"] for column in inspector.get_columns("wo_work_order")
+    }
+    assert {"response_due_at", "responded_at", "sla_status"} <= work_order_columns
+
+    command.downgrade(config, "0007_i11")
+    inspector = inspect(engine)
+    assert not {"wo_sla_policy", "wo_attachment", "sys_notification"} & set(
+        inspector.get_table_names()
+    )
     engine.dispose()

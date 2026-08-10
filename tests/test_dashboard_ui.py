@@ -243,6 +243,45 @@ def test_i16_work_order_detail_exposes_collaboration_actions(
     assert "转派 · TRANSFER" in updated.text
     assert "页面转派" in updated.text
 
+    _login(ui_client, "zhaoliu")
+    notifications = ui_client.get("/notifications")
+    assert notifications.status_code == 200
+    assert "工单已转派给你" in notifications.text
+    assert 'data-testid="read-notification"' in notifications.text
+
+
+def test_i17_detail_shows_sla_and_supports_safe_attachment_upload(
+    ui_client: TestClient,
+) -> None:
+    _login(ui_client, "admin")
+    created = ui_client.post(
+        "/ui/workorders",
+        data={
+            "title": "I17 附件页面验收",
+            "type": "REPAIR",
+            "priority": "URGENT",
+        },
+        follow_redirects=False,
+    )
+    detail_path = created.headers["location"]
+    detail = ui_client.get(detail_path)
+    assert "SLA 状态" in detail.text
+    assert "ON_TRACK" in detail.text
+    assert 'data-testid="upload-attachment"' in detail.text
+
+    uploaded = ui_client.post(
+        f"{detail_path.replace('/workorders/', '/ui/workorders/')}/attachments",
+        files={"file": ("验收.txt", "I17 页面附件".encode(), "text/plain")},
+        follow_redirects=False,
+    )
+    assert uploaded.status_code == 303
+    refreshed = ui_client.get(detail_path)
+    assert "验收.txt" in refreshed.text
+    assert "ATTACHMENT_UPLOAD" in refreshed.text
+
+    workorders = ui_client.get("/workorders")
+    assert 'data-testid="evaluate-sla"' in workorders.text
+
 
 def test_templates_do_not_encode_stable_permission_codes() -> None:
     from pathlib import Path
