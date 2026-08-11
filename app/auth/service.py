@@ -21,6 +21,7 @@ class ActiveOrganizationDenied(Exception):
 @dataclass(frozen=True)
 class RequestContext:
     current_user_id: int
+    tenant_id: int
     active_org_id: int
     session_id: int
 
@@ -36,6 +37,9 @@ class OrganizationContext:
 @dataclass(frozen=True)
 class AuthProfile:
     user_id: int
+    tenant_id: int
+    tenant_code: str
+    tenant_name: str
     username: str
     display_name: str
     active_org_id: int
@@ -57,15 +61,26 @@ class AuthService:
         permission_service: PermissionService,
         *,
         session_hours: int = 8,
+        default_tenant_code: str = "DEMO",
         password_hasher: PasswordHasher | None = None,
     ) -> None:
         self.repository = repository
         self.permission_service = permission_service
         self.session_hours = session_hours
+        self.default_tenant_code = default_tenant_code
         self.password_hasher = password_hasher or PasswordHasher()
 
-    def login(self, username: str, password: str) -> LoginResult:
-        user = self.repository.get_user_by_username(username)
+    def login(
+        self,
+        username: str,
+        password: str,
+        tenant_code: str | None = None,
+    ) -> LoginResult:
+        normalized_tenant_code = (tenant_code or self.default_tenant_code).strip().upper()
+        tenant = self.repository.get_tenant_by_code(normalized_tenant_code)
+        if tenant is None or not tenant.is_active:
+            raise AuthenticationError("invalid tenant or credentials")
+        user = self.repository.get_user_by_username(username, tenant.id)
         if (
             user is None
             or not user.is_active
@@ -73,12 +88,13 @@ class AuthService:
         ):
             raise AuthenticationError("invalid username or password")
 
-        memberships = self.repository.list_active_memberships(user.id)
+        memberships = self.repository.list_active_memberships(user.id, tenant.id)
         if not memberships:
             raise ActiveOrganizationDenied("user has no active organization")
 
         token = new_session_token()
         auth_session = AuthSession(
+            tenant_id=tenant.id,
             user_id=user.id,
             active_org_id=memberships[0].org_id,
             token_hash=session_token_hash(token),
@@ -86,7 +102,12 @@ class AuthService:
         )
         self.repository.save(auth_session)
         self.repository.refresh(auth_session)
-        context = RequestContext(user.id, auth_session.active_org_id, auth_session.id)
+        context = RequestContext(
+            user.id,
+            tenant.id,
+            auth_session.active_org_id,
+            auth_session.id,
+        )
         return LoginResult(token, self.profile(context))
 
     def authenticate(self, token: str | None) -> RequestContext:
@@ -101,10 +122,12 @@ class AuthService:
         if self.repository.get_active_membership(
             auth_session.user_id,
             auth_session.active_org_id,
+            auth_session.tenant_id,
         ) is None:
             raise AuthenticationError("active organization is no longer available")
         return RequestContext(
             auth_session.user_id,
+            auth_session.tenant_id,
             auth_session.active_org_id,
             auth_session.id,
         )
@@ -120,18 +143,30 @@ class AuthService:
         org_id: int,
     ) -> AuthProfile:
         auth_session = self._session_for_context(context)
-        if self.repository.get_active_membership(context.current_user_id, org_id) is None:
+        if self.repository.get_active_membership(
+            context.current_user_id,
+            org_id,
+            context.tenant_id,
+        ) is None:
             raise ActiveOrganizationDenied("user does not belong to target organization")
         auth_session.active_org_id = org_id
         self.repository.save(auth_session)
         return self.profile(
-            RequestContext(context.current_user_id, org_id, context.session_id)
+            RequestContext(
+                context.current_user_id,
+                context.tenant_id,
+                org_id,
+                context.session_id,
+            )
         )
 
     def profile(self, context: RequestContext) -> AuthProfile:
         auth_session = self._session_for_context(context)
         user = auth_session.user
-        memberships = self.repository.list_active_memberships(user.id)
+        memberships = self.repository.list_active_memberships(
+            user.id,
+            context.tenant_id,
+        )
         active_membership = next(
             (
                 membership
@@ -158,6 +193,9 @@ class AuthService:
         )
         return AuthProfile(
             user_id=user.id,
+            tenant_id=auth_session.tenant_id,
+            tenant_code=auth_session.tenant.tenant_code,
+            tenant_name=auth_session.tenant.tenant_name,
             username=user.username,
             display_name=user.display_name,
             active_org_id=context.active_org_id,
@@ -180,6 +218,9 @@ class AuthService:
             and auth_session.revoked_at is None
             and auth_session.expires_at > self._now()
             and auth_session.user.is_active
+            and auth_session.tenant.is_active
+            and auth_session.user.tenant_id == auth_session.tenant_id
+            and auth_session.active_organization.tenant_id == auth_session.tenant_id
         )
 
     def _session_for_context(self, context: RequestContext) -> AuthSession:
@@ -188,6 +229,7 @@ class AuthService:
             auth_session is None
             or not self._is_valid(auth_session)
             or auth_session.user_id != context.current_user_id
+            or auth_session.tenant_id != context.tenant_id
             or auth_session.active_org_id != context.active_org_id
         ):
             raise AuthenticationError("session context is invalid or expired")

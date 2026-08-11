@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 
 class LoginRequest(BaseModel):
+    tenant_code: str | None = Field(default=None, min_length=2, max_length=80)
     username: str = Field(min_length=1, max_length=80)
     password: str = Field(min_length=1, max_length=256)
 
@@ -21,6 +22,9 @@ class OrganizationResponse(BaseModel):
 
 class MeResponse(BaseModel):
     user_id: int
+    tenant_id: int
+    tenant_code: str
+    tenant_name: str
     username: str
     display_name: str
     active_org_id: int

@@ -33,6 +33,7 @@ def get_auth_service(
         AuthRepository(session),
         PermissionService(iam_repository),
         session_hours=settings.auth_session_hours,
+        default_tenant_code=settings.default_tenant_code,
     )
 
 
@@ -63,7 +64,11 @@ def login(
 ) -> MeResponse:
     settings: Settings = request.app.state.settings
     try:
-        result = service.login(command.username, command.password)
+        result = service.login(
+            command.username,
+            command.password,
+            command.tenant_code,
+        )
     except AuthenticationError as error:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

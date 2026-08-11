@@ -27,7 +27,7 @@
       {% if profile %}
       <div class="sidebar-foot">
         <span class="avatar">{{ profile.display_name[:1] }}</span>
-        <span><strong>{{ profile.display_name }}</strong><small>{{ profile.role_codes|join(' · ') }}</small></span>
+        <span><strong>{{ profile.display_name }}</strong><small>{{ profile.tenant_name }} · {{ profile.role_codes|join(' · ') }}</small></span>
       </div>
       {% endif %}
     </aside>

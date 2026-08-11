@@ -72,6 +72,8 @@ def test_login_sets_secure_cookie_and_me_returns_permission_summary(
     assert "httponly" in cookie
     assert "samesite=lax" in cookie
     profile = response.json()
+    assert profile["tenant_code"] == "DEMO"
+    assert profile["tenant_name"] == "智慧城市演示租户"
     assert profile["username"] == "wangwu"
     assert profile["role_codes"] == ["DISPATCHER", "REVIEWER"]
     assert "workorder:dispatch" in profile["permission_codes"]

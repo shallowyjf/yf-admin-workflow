@@ -53,21 +53,23 @@ router = APIRouter(prefix="/api/workorders", tags=["workorders"])
 
 def get_work_order_service(
     session: Annotated[Session, Depends(get_db_session)],
+    context: Annotated[RequestContext, Depends(get_request_context)],
 ) -> WorkOrderService:
     return WorkOrderService(
         WorkOrderRepository(session),
-        PermissionService(IAMRepository(session)),
-        build_workflow_service(session),
+        PermissionService(IAMRepository(session, context.tenant_id)),
+        build_workflow_service(session, context.tenant_id),
         NotificationService(NotificationRepository(session)),
     )
 
 
 def get_attachment_service(
     session: Annotated[Session, Depends(get_db_session)],
+    context: Annotated[RequestContext, Depends(get_request_context)],
 ) -> WorkOrderAttachmentService:
     return WorkOrderAttachmentService(
         WorkOrderRepository(session),
-        PermissionService(IAMRepository(session)),
+        PermissionService(IAMRepository(session, context.tenant_id)),
     )
 
 

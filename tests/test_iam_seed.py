@@ -9,6 +9,7 @@ from app.iam.models import (
     Role,
     RoleDataScope,
     RolePermission,
+    Tenant,
     User,
 )
 from app.iam.repository import IAMRepository
@@ -24,6 +25,7 @@ def test_seed_is_idempotent_and_creates_required_relationships(
     seed_iam(service)
     seed_iam(service)
 
+    assert db_session.scalar(select(func.count()).select_from(Tenant)) == 1
     assert db_session.scalar(select(func.count()).select_from(Organization)) == 5
     assert db_session.scalar(select(func.count()).select_from(User)) == 5
     assert db_session.scalar(select(func.count()).select_from(Role)) == 5

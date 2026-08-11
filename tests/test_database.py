@@ -13,6 +13,7 @@ def test_shared_declarative_base_contains_current_tables() -> None:
         "sys_iam_audit_log",
         "sys_notification",
         "sys_saved_view",
+        "sys_tenant",
         "sys_org",
         "sys_permission",
         "sys_position",
@@ -47,6 +48,42 @@ def test_i18_migration_creates_and_removes_saved_views(tmp_path: Path) -> None:
 
     command.downgrade(config, "0008_i17")
     assert "sys_saved_view" not in inspect(engine).get_table_names()
+    engine.dispose()
+
+
+def test_i19_migration_creates_tenant_scoped_iam(tmp_path: Path) -> None:
+    database_path = tmp_path / "i19.db"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    config = Config("alembic.ini")
+    config.set_main_option("sqlalchemy.url", database_url)
+
+    command.upgrade(config, "0010_i19")
+    engine = create_engine(database_url)
+    inspector = inspect(engine)
+    assert "sys_tenant" in inspector.get_table_names()
+    for table_name in (
+        "sys_user",
+        "sys_org",
+        "sys_role",
+        "sys_position",
+        "sys_iam_audit_log",
+        "sys_auth_session",
+    ):
+        assert "tenant_id" in {
+            column["name"] for column in inspector.get_columns(table_name)
+        }
+    unique_columns = {
+        tuple(item["column_names"])
+        for item in inspector.get_unique_constraints("sys_user")
+    }
+    assert ("tenant_id", "username") in unique_columns
+
+    command.downgrade(config, "0009_i18")
+    inspector = inspect(engine)
+    assert "sys_tenant" not in inspector.get_table_names()
+    assert "tenant_id" not in {
+        column["name"] for column in inspector.get_columns("sys_user")
+    }
     engine.dispose()
 
 

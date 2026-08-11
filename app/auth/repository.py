@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.iam.models import (
     Organization,
+    Tenant,
     User,
     UserOrganization,
     UserOrganizationRole,
@@ -19,16 +20,31 @@ class AuthRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def get_user_by_username(self, username: str) -> User | None:
-        return self.session.scalar(select(User).where(User.username == username))
+    def get_tenant_by_code(self, tenant_code: str) -> Tenant | None:
+        return self.session.scalar(
+            select(Tenant).where(Tenant.tenant_code == tenant_code)
+        )
 
-    def list_active_memberships(self, user_id: int) -> list[UserOrganization]:
+    def get_user_by_username(self, username: str, tenant_id: int) -> User | None:
+        return self.session.scalar(
+            select(User).where(
+                User.username == username,
+                User.tenant_id == tenant_id,
+            )
+        )
+
+    def list_active_memberships(
+        self,
+        user_id: int,
+        tenant_id: int,
+    ) -> list[UserOrganization]:
         return list(
             self.session.scalars(
                 select(UserOrganization)
                 .join(Organization, Organization.id == UserOrganization.org_id)
                 .where(
                     UserOrganization.user_id == user_id,
+                    Organization.tenant_id == tenant_id,
                     UserOrganization.is_active.is_(True),
                     Organization.is_active.is_(True),
                 )
@@ -50,6 +66,7 @@ class AuthRepository:
         self,
         user_id: int,
         org_id: int,
+        tenant_id: int,
     ) -> UserOrganization | None:
         return self.session.scalar(
             select(UserOrganization)
@@ -57,6 +74,7 @@ class AuthRepository:
             .where(
                 UserOrganization.user_id == user_id,
                 UserOrganization.org_id == org_id,
+                Organization.tenant_id == tenant_id,
                 UserOrganization.is_active.is_(True),
                 Organization.is_active.is_(True),
             )
@@ -68,6 +86,7 @@ class AuthRepository:
             .where(AuthSession.token_hash == token_hash)
             .options(
                 joinedload(AuthSession.user),
+                joinedload(AuthSession.tenant),
                 joinedload(AuthSession.active_organization),
             )
         )

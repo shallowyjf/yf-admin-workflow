@@ -41,8 +41,9 @@ router = APIRouter(prefix="/api/users", tags=["iam-users"])
 
 def get_user_administration_service(
     session: Annotated[Session, Depends(get_db_session)],
+    context: Annotated[RequestContext, Depends(get_request_context)],
 ) -> UserAdministrationService:
-    repository = IAMRepository(session)
+    repository = IAMRepository(session, context.tenant_id)
     return UserAdministrationService(
         repository,
         PermissionService(repository),

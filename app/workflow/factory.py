@@ -10,8 +10,11 @@ from .repository import WorkflowRepository
 from .service import WorkflowService
 
 
-def build_workflow_service(session: Session) -> WorkflowService:
-    identity_queries = IdentityQueryService(IAMRepository(session))
+def build_workflow_service(
+    session: Session,
+    tenant_id: int | None = None,
+) -> WorkflowService:
+    identity_queries = IdentityQueryService(IAMRepository(session, tenant_id))
     return WorkflowService(
         WorkflowRepository(session),
         CandidateResolverRegistry.default(identity_queries),

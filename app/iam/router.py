@@ -35,8 +35,9 @@ router = APIRouter(prefix="/api/orgs", tags=["iam-organizations"])
 
 def get_organization_administration_service(
     session: Annotated[Session, Depends(get_db_session)],
+    context: Annotated[RequestContext, Depends(get_request_context)],
 ) -> OrganizationAdministrationService:
-    repository = IAMRepository(session)
+    repository = IAMRepository(session, context.tenant_id)
     return OrganizationAdministrationService(
         repository,
         PermissionService(repository),

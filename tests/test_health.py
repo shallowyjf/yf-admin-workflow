@@ -8,7 +8,7 @@ def test_health_returns_current_iteration_and_database_connectivity(client: Test
     assert response.json() == {
         "status": "ok",
         "database": "ok",
-        "iteration": "I18",
+        "iteration": "I19",
         "version": "0.1.0",
     }
 

@@ -11,6 +11,8 @@ from .permission_catalog import PERMISSIONS
 from .repository import IAMRepository
 from .service import IAMService
 
+DEFAULT_TENANT_CODE = "DEMO"
+DEFAULT_TENANT_NAME = "智慧城市演示租户"
 ORGANIZATIONS = (
     ("GROUP", "XX水务集团", "GROUP", None, 10),
     ("DISPATCH_CENTER", "调度中心", "DEPARTMENT", "GROUP", 20),
@@ -99,6 +101,7 @@ ROLE_POLICIES = {
 
 @dataclass(frozen=True)
 class SeedSummary:
+    tenants: int = 1
     organizations: int = 5
     users: int = 5
     roles: int = 5
@@ -109,6 +112,19 @@ class SeedSummary:
 
 
 def seed_iam(service: IAMService) -> SeedSummary:
+    tenant = service.repository.get_tenant_by_code(DEFAULT_TENANT_CODE)
+    if tenant is None:
+        from .models import Tenant
+
+        tenant = Tenant(
+            tenant_code=DEFAULT_TENANT_CODE,
+            tenant_name=DEFAULT_TENANT_NAME,
+        )
+        service.repository.add(tenant)
+        service.repository.commit()
+        service.repository.refresh(tenant)
+    if service.repository.tenant_id is None:
+        service.repository.tenant_id = tenant.id
     password_hasher = PasswordHasher()
     for code, name, org_type, parent_code, sort_no in ORGANIZATIONS:
         if service.get_organization(code) is None:
@@ -191,7 +207,8 @@ def main() -> None:
             summary = seed_iam(IAMService(IAMRepository(session)))
         print(
             "IAM seed ready: "
-            f"{summary.organizations} organizations, {summary.users} users, "
+            f"{summary.tenants} tenant, {summary.organizations} organizations, "
+            f"{summary.users} users, "
             f"{summary.roles} roles, {summary.positions} positions, "
             f"{summary.permissions} permissions"
         )

@@ -61,8 +61,9 @@ class IAMImportResponse(BaseModel):
 
 def get_iam_bulk_service(
     session: Annotated[Session, Depends(get_db_session)],
+    context: Annotated[RequestContext, Depends(get_request_context)],
 ) -> IAMBulkService:
-    repository = IAMRepository(session)
+    repository = IAMRepository(session, context.tenant_id)
     permissions = PermissionService(repository)
     return IAMBulkService(
         repository,

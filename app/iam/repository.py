@@ -15,6 +15,7 @@ from .models import (
     Role,
     RoleDataScope,
     RolePermission,
+    Tenant,
     User,
     UserOrganization,
     UserOrganizationPosition,
@@ -33,10 +34,37 @@ class IAMListQuery:
 
 
 class IAMRepository:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, tenant_id: int | None = None) -> None:
         self.session = session
+        self.tenant_id = tenant_id
+
+    def require_tenant_id(self) -> int:
+        return self.tenant_id or 1
+
+    def get_tenant_by_code(self, tenant_code: str) -> Tenant | None:
+        return self.session.scalar(
+            select(Tenant).where(Tenant.tenant_code == tenant_code)
+        )
+
+    def get_tenant(self, tenant_id: int) -> Tenant | None:
+        return self.session.get(Tenant, tenant_id)
+
+    def list_tenants(self) -> list[Tenant]:
+        return list(
+            self.session.scalars(select(Tenant).order_by(Tenant.tenant_code))
+        )
+
+    def _tenant_conditions(self, model) -> list:
+        if self.tenant_id is None or not hasattr(model, "tenant_id"):
+            return []
+        return [model.tenant_id == self.tenant_id]
 
     def add(self, entity: object) -> None:
+        if (
+            isinstance(entity, (IAMAuditLog, Organization, Position, Role, User))
+            and entity.tenant_id is None
+        ):
+            entity.tenant_id = self.require_tenant_id()
         self.session.add(entity)
 
     def commit(self) -> None:
@@ -59,12 +87,17 @@ class IAMRepository:
         self.session.delete(entity)
 
     def get_user_by_username(self, username: str) -> User | None:
-        return self.session.scalar(select(User).where(User.username == username))
+        return self.session.scalar(
+            select(User).where(
+                User.username == username,
+                *self._tenant_conditions(User),
+            )
+        )
 
     def get_user(self, user_id: int) -> User | None:
         return self.session.scalar(
             select(User)
-            .where(User.id == user_id)
+            .where(User.id == user_id, *self._tenant_conditions(User))
             .options(
                 selectinload(User.memberships).selectinload(
                     UserOrganization.organization
@@ -80,11 +113,19 @@ class IAMRepository:
 
     def get_organization_by_code(self, org_code: str) -> Organization | None:
         return self.session.scalar(
-            select(Organization).where(Organization.org_code == org_code)
+            select(Organization).where(
+                Organization.org_code == org_code,
+                *self._tenant_conditions(Organization),
+            )
         )
 
     def get_organization(self, organization_id: int) -> Organization | None:
-        return self.session.get(Organization, organization_id)
+        return self.session.scalar(
+            select(Organization).where(
+                Organization.id == organization_id,
+                *self._tenant_conditions(Organization),
+            )
+        )
 
     def list_descendant_organizations(
         self,
@@ -93,7 +134,10 @@ class IAMRepository:
         return list(
             self.session.scalars(
                 select(Organization)
-                .where(Organization.org_path.like(f"{organization.org_path}/%"))
+                .where(
+                    Organization.org_path.like(f"{organization.org_path}/%"),
+                    *self._tenant_conditions(Organization),
+                )
                 .order_by(Organization.org_path)
             )
         )
@@ -103,7 +147,10 @@ class IAMRepository:
             self.session.scalar(
                 select(func.count())
                 .select_from(Organization)
-                .where(Organization.parent_id == organization_id)
+                .where(
+                    Organization.parent_id == organization_id,
+                    *self._tenant_conditions(Organization),
+                )
             )
             or 0
         )
@@ -129,6 +176,7 @@ class IAMRepository:
                 .where(
                     IAMAuditLog.entity_type == entity_type,
                     IAMAuditLog.entity_id == entity_id,
+                    *self._tenant_conditions(IAMAuditLog),
                 )
                 .order_by(IAMAuditLog.id)
             )
@@ -144,7 +192,11 @@ class IAMRepository:
         offset: int = 0,
         limit: int = 100,
     ) -> list[IAMAuditLog]:
-        statement = select(IAMAuditLog).options(selectinload(IAMAuditLog.operator))
+        statement = (
+            select(IAMAuditLog)
+            .where(*self._tenant_conditions(IAMAuditLog))
+            .options(selectinload(IAMAuditLog.operator))
+        )
         if entity_type is not None:
             statement = statement.where(IAMAuditLog.entity_type == entity_type)
         if entity_id is not None:
@@ -168,12 +220,17 @@ class IAMRepository:
         )
 
     def get_role_by_code(self, role_code: str) -> Role | None:
-        return self.session.scalar(select(Role).where(Role.role_code == role_code))
+        return self.session.scalar(
+            select(Role).where(
+                Role.role_code == role_code,
+                *self._tenant_conditions(Role),
+            )
+        )
 
     def get_role(self, role_id: int) -> Role | None:
         return self.session.scalar(
             select(Role)
-            .where(Role.id == role_id)
+            .where(Role.id == role_id, *self._tenant_conditions(Role))
             .options(
                 selectinload(Role.permission_links).selectinload(
                     RolePermission.permission
@@ -184,13 +241,16 @@ class IAMRepository:
 
     def get_position_by_code(self, position_code: str) -> Position | None:
         return self.session.scalar(
-            select(Position).where(Position.position_code == position_code)
+            select(Position).where(
+                Position.position_code == position_code,
+                *self._tenant_conditions(Position),
+            )
         )
 
     def get_position(self, position_id: int) -> Position | None:
         return self.session.scalar(
             select(Position)
-            .where(Position.id == position_id)
+            .where(Position.id == position_id, *self._tenant_conditions(Position))
             .options(selectinload(Position.membership_links))
         )
 
@@ -219,9 +279,13 @@ class IAMRepository:
     def get_membership(self, user_id: int, org_id: int) -> UserOrganization | None:
         return self.session.scalar(
             select(UserOrganization)
+            .join(User, User.id == UserOrganization.user_id)
+            .join(Organization, Organization.id == UserOrganization.org_id)
             .where(
                 UserOrganization.user_id == user_id,
                 UserOrganization.org_id == org_id,
+                User.tenant_id == Organization.tenant_id,
+                *self._tenant_conditions(User),
             )
             .options(
                 selectinload(UserOrganization.role_links).selectinload(
@@ -293,6 +357,9 @@ class IAMRepository:
             .where(
                 User.id == user_id,
                 User.is_active.is_(True),
+                User.tenant_id == Organization.tenant_id,
+                User.tenant_id == Role.tenant_id,
+                *self._tenant_conditions(User),
                 UserOrganization.org_id == active_org_id,
                 UserOrganization.is_active.is_(True),
                 Organization.is_active.is_(True),
@@ -322,6 +389,9 @@ class IAMRepository:
             .where(
                 User.id == user_id,
                 User.is_active.is_(True),
+                User.tenant_id == Organization.tenant_id,
+                User.tenant_id == Role.tenant_id,
+                *self._tenant_conditions(User),
                 UserOrganization.org_id == active_org_id,
                 UserOrganization.is_active.is_(True),
                 Organization.is_active.is_(True),
@@ -349,13 +419,18 @@ class IAMRepository:
 
     def list_active_descendant_org_ids(self, org_id: int) -> set[int]:
         organization = self.session.get(Organization, org_id)
-        if organization is None or not organization.is_active:
+        if (
+            organization is None
+            or not organization.is_active
+            or (self.tenant_id is not None and organization.tenant_id != self.tenant_id)
+        ):
             return set()
         descendant_path = f"{organization.org_path}/%"
         return set(
             self.session.scalars(
                 select(Organization.id).where(
                     Organization.is_active.is_(True),
+                    *self._tenant_conditions(Organization),
                     (
                         (Organization.id == org_id)
                         | Organization.org_path.like(descendant_path)
@@ -366,7 +441,11 @@ class IAMRepository:
 
     def get_active_user_id(self, user_id: int) -> int | None:
         return self.session.scalar(
-            select(User.id).where(User.id == user_id, User.is_active.is_(True))
+            select(User.id).where(
+                User.id == user_id,
+                User.is_active.is_(True),
+                *self._tenant_conditions(User),
+            )
         )
 
     def list_active_user_ids_by_organization(self, org_id: int) -> set[int]:
@@ -377,6 +456,8 @@ class IAMRepository:
                 .join(Organization, Organization.id == UserOrganization.org_id)
                 .where(
                     User.is_active.is_(True),
+                    User.tenant_id == Organization.tenant_id,
+                    *self._tenant_conditions(User),
                     UserOrganization.is_active.is_(True),
                     Organization.is_active.is_(True),
                     Organization.id == org_id,
@@ -401,6 +482,9 @@ class IAMRepository:
             .join(Role, Role.id == UserOrganizationRole.role_id)
             .where(
                 User.is_active.is_(True),
+                User.tenant_id == Organization.tenant_id,
+                User.tenant_id == Role.tenant_id,
+                *self._tenant_conditions(User),
                 UserOrganization.is_active.is_(True),
                 Organization.is_active.is_(True),
                 Role.is_active.is_(True),
@@ -428,6 +512,9 @@ class IAMRepository:
             .join(Position, Position.id == UserOrganizationPosition.position_id)
             .where(
                 User.is_active.is_(True),
+                User.tenant_id == Organization.tenant_id,
+                User.tenant_id == Position.tenant_id,
+                *self._tenant_conditions(User),
                 UserOrganization.is_active.is_(True),
                 Organization.is_active.is_(True),
                 Position.is_active.is_(True),
@@ -447,6 +534,7 @@ class IAMRepository:
                 select(User).where(
                     User.id.in_(user_ids),
                     User.is_active.is_(True),
+                    *self._tenant_conditions(User),
                 )
             )
         }
@@ -454,7 +542,9 @@ class IAMRepository:
     def list_organizations(self) -> list[Organization]:
         return list(
             self.session.scalars(
-                select(Organization).order_by(Organization.sort_no, Organization.id)
+                select(Organization)
+                .where(*self._tenant_conditions(Organization))
+                .order_by(Organization.sort_no, Organization.id)
             )
         )
 
@@ -462,6 +552,7 @@ class IAMRepository:
         return list(
             self.session.scalars(
                 select(User)
+                .where(*self._tenant_conditions(User))
                 .options(
                     selectinload(User.memberships).selectinload(
                         UserOrganization.organization
@@ -481,6 +572,7 @@ class IAMRepository:
         return list(
             self.session.scalars(
                 select(Role)
+                .where(*self._tenant_conditions(Role))
                 .options(
                     selectinload(Role.permission_links).selectinload(
                         RolePermission.permission
@@ -495,6 +587,7 @@ class IAMRepository:
         return list(
             self.session.scalars(
                 select(Position)
+                .where(*self._tenant_conditions(Position))
                 .options(selectinload(Position.membership_links))
                 .order_by(Position.position_code)
             )
@@ -512,7 +605,7 @@ class IAMRepository:
     def search_organizations(
         self, query: IAMListQuery
     ) -> PageResult[Organization]:
-        conditions = []
+        conditions = self._tenant_conditions(Organization)
         keyword = (query.keyword or "").strip()
         if keyword:
             pattern = f"%{keyword}%"
@@ -533,7 +626,7 @@ class IAMRepository:
         return self._page(Organization, conditions, sort_columns, query)
 
     def search_users(self, query: IAMListQuery) -> PageResult[User]:
-        conditions = []
+        conditions = self._tenant_conditions(User)
         keyword = (query.keyword or "").strip()
         if keyword:
             pattern = f"%{keyword}%"
@@ -561,7 +654,7 @@ class IAMRepository:
         return self._page(User, conditions, sort_columns, query, options=options)
 
     def search_roles(self, query: IAMListQuery) -> PageResult[Role]:
-        conditions = []
+        conditions = self._tenant_conditions(Role)
         keyword = (query.keyword or "").strip()
         if keyword:
             pattern = f"%{keyword}%"

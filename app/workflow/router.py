@@ -19,8 +19,9 @@ router = APIRouter(prefix="/api/tasks", tags=["workflow-tasks"])
 
 def get_workflow_service(
     session: Annotated[Session, Depends(get_db_session)],
+    context: Annotated[RequestContext, Depends(get_request_context)],
 ) -> WorkflowService:
-    return build_workflow_service(session)
+    return build_workflow_service(session, context.tenant_id)
 
 
 def _task_response(task: WorkflowTask, user_id: int) -> MyTaskResponse:

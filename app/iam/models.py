@@ -24,10 +24,33 @@ from app.db.base import Base
 from app.db.mixins import IdTimestampMixin
 
 
+class Tenant(IdTimestampMixin, Base):
+    __tablename__ = "sys_tenant"
+
+    tenant_code: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+    tenant_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("1"),
+    )
+
+
 class User(IdTimestampMixin, Base):
     __tablename__ = "sys_user"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "username", name="uq_sys_user_tenant_username"),
+        Index("ix_sys_user_tenant_id", "tenant_id"),
+    )
 
-    username: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+    tenant_id: Mapped[int] = mapped_column(
+        ForeignKey("sys_tenant.id", ondelete="RESTRICT"),
+        nullable=False,
+        default=1,
+        server_default=text("1"),
+    )
+    username: Mapped[str] = mapped_column(String(80), nullable=False)
     display_name: Mapped[str] = mapped_column(String(120), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     phone: Mapped[str | None] = mapped_column(String(40))
@@ -42,19 +65,28 @@ class User(IdTimestampMixin, Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    tenant: Mapped[Tenant] = relationship()
 
 
 class Organization(IdTimestampMixin, Base):
     __tablename__ = "sys_org"
     __table_args__ = (
+        UniqueConstraint("tenant_id", "org_code", name="uq_sys_org_tenant_code"),
+        Index("ix_sys_org_tenant_id", "tenant_id"),
         Index("ix_sys_org_parent_id", "parent_id"),
         Index("ix_sys_org_org_path", "org_path"),
     )
 
+    tenant_id: Mapped[int] = mapped_column(
+        ForeignKey("sys_tenant.id", ondelete="RESTRICT"),
+        nullable=False,
+        default=1,
+        server_default=text("1"),
+    )
     parent_id: Mapped[int | None] = mapped_column(
         ForeignKey("sys_org.id", ondelete="RESTRICT")
     )
-    org_code: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+    org_code: Mapped[str] = mapped_column(String(80), nullable=False)
     org_name: Mapped[str] = mapped_column(String(160), nullable=False)
     org_type: Mapped[str | None] = mapped_column(String(40))
     org_path: Mapped[str] = mapped_column(String(500), nullable=False)
@@ -79,15 +111,23 @@ class Organization(IdTimestampMixin, Base):
     memberships: Mapped[list[UserOrganization]] = relationship(
         back_populates="organization"
     )
+    tenant: Mapped[Tenant] = relationship()
 
 
 class IAMAuditLog(IdTimestampMixin, Base):
     __tablename__ = "sys_iam_audit_log"
     __table_args__ = (
+        Index("ix_sys_iam_audit_log_tenant_id", "tenant_id"),
         Index("ix_sys_iam_audit_entity", "entity_type", "entity_id"),
         Index("ix_sys_iam_audit_operator_id", "operator_id"),
     )
 
+    tenant_id: Mapped[int] = mapped_column(
+        ForeignKey("sys_tenant.id", ondelete="RESTRICT"),
+        nullable=False,
+        default=1,
+        server_default=text("1"),
+    )
     entity_type: Mapped[str] = mapped_column(String(40), nullable=False)
     entity_id: Mapped[int] = mapped_column(Integer, nullable=False)
     action: Mapped[str] = mapped_column(String(40), nullable=False)
@@ -101,8 +141,18 @@ class IAMAuditLog(IdTimestampMixin, Base):
 
 class Role(IdTimestampMixin, Base):
     __tablename__ = "sys_role"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "role_code", name="uq_sys_role_tenant_code"),
+        Index("ix_sys_role_tenant_id", "tenant_id"),
+    )
 
-    role_code: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+    tenant_id: Mapped[int] = mapped_column(
+        ForeignKey("sys_tenant.id", ondelete="RESTRICT"),
+        nullable=False,
+        default=1,
+        server_default=text("1"),
+    )
+    role_code: Mapped[str] = mapped_column(String(80), nullable=False)
     role_name: Mapped[str] = mapped_column(String(120), nullable=False)
     role_type: Mapped[str | None] = mapped_column(String(40))
     is_active: Mapped[bool] = mapped_column(
@@ -123,6 +173,7 @@ class Role(IdTimestampMixin, Base):
         back_populates="role",
         cascade="all, delete-orphan",
     )
+    tenant: Mapped[Tenant] = relationship()
 
 
 class Permission(IdTimestampMixin, Base):
@@ -188,8 +239,22 @@ class RoleDataScope(IdTimestampMixin, Base):
 
 class Position(IdTimestampMixin, Base):
     __tablename__ = "sys_position"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "position_code",
+            name="uq_sys_position_tenant_code",
+        ),
+        Index("ix_sys_position_tenant_id", "tenant_id"),
+    )
 
-    position_code: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+    tenant_id: Mapped[int] = mapped_column(
+        ForeignKey("sys_tenant.id", ondelete="RESTRICT"),
+        nullable=False,
+        default=1,
+        server_default=text("1"),
+    )
+    position_code: Mapped[str] = mapped_column(String(80), nullable=False)
     position_name: Mapped[str] = mapped_column(String(120), nullable=False)
     is_active: Mapped[bool] = mapped_column(
         Boolean,
@@ -201,6 +266,7 @@ class Position(IdTimestampMixin, Base):
     membership_links: Mapped[list[UserOrganizationPosition]] = relationship(
         back_populates="position"
     )
+    tenant: Mapped[Tenant] = relationship()
 
 
 class UserOrganization(IdTimestampMixin, Base):

@@ -39,8 +39,9 @@ router = APIRouter(prefix="/api/roles", tags=["iam-roles"])
 
 def get_role_administration_service(
     session: Annotated[Session, Depends(get_db_session)],
+    context: Annotated[RequestContext, Depends(get_request_context)],
 ) -> RoleAdministrationService:
-    repository = IAMRepository(session)
+    repository = IAMRepository(session, context.tenant_id)
     return RoleAdministrationService(repository, PermissionService(repository))
 
 

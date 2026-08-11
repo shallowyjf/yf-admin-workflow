@@ -46,8 +46,9 @@ router = APIRouter(tags=["iam-dictionaries"])
 
 def get_position_administration_service(
     session: Annotated[Session, Depends(get_db_session)],
+    context: Annotated[RequestContext, Depends(get_request_context)],
 ) -> PositionAdministrationService:
-    repository = IAMRepository(session)
+    repository = IAMRepository(session, context.tenant_id)
     return PositionAdministrationService(
         repository,
         PermissionService(repository),
@@ -57,15 +58,17 @@ def get_position_administration_service(
 
 def get_permission_dictionary_service(
     session: Annotated[Session, Depends(get_db_session)],
+    context: Annotated[RequestContext, Depends(get_request_context)],
 ) -> PermissionDictionaryService:
-    repository = IAMRepository(session)
+    repository = IAMRepository(session, context.tenant_id)
     return PermissionDictionaryService(repository, PermissionService(repository))
 
 
 def get_iam_audit_query_service(
     session: Annotated[Session, Depends(get_db_session)],
+    context: Annotated[RequestContext, Depends(get_request_context)],
 ) -> IAMAuditQueryService:
-    repository = IAMRepository(session)
+    repository = IAMRepository(session, context.tenant_id)
     return IAMAuditQueryService(repository, PermissionService(repository))
 
 

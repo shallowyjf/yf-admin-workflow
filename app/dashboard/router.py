@@ -109,10 +109,11 @@ def get_page_identity(
 
 def get_dashboard_service(
     session: Annotated[Session, Depends(get_db_session)],
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
 ) -> DashboardService:
-    iam_repository = IAMRepository(session)
+    iam_repository = IAMRepository(session, identity.context.tenant_id)
     permission_service = PermissionService(iam_repository)
-    workflow_service = build_workflow_service(session)
+    workflow_service = build_workflow_service(session, identity.context.tenant_id)
     notification_service = NotificationService(NotificationRepository(session))
     work_order_repository = WorkOrderRepository(session)
     work_order_service = WorkOrderService(
