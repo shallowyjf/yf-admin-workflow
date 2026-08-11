@@ -7,6 +7,7 @@ from pathlib import PurePosixPath
 from typing import Protocol
 
 from app.iam.authorization import PermissionService
+from app.project.service import ProjectActor, ProjectService
 
 from .domain import (
     WorkOrderActionType,
@@ -65,10 +66,13 @@ class WorkOrderAttachmentService:
         repository: WorkOrderRepository,
         permission_service: PermissionService,
         scanner: AttachmentScanner | None = None,
+        *,
+        project_service: ProjectService | None = None,
     ) -> None:
         self.repository = repository
         self.permission_service = permission_service
         self.scanner = scanner or BasicAttachmentScanner()
+        self.project_service = project_service
 
     def upload(
         self,
@@ -165,6 +169,23 @@ class WorkOrderAttachmentService:
         work_order = self.repository.get_visible(work_order_id, scope)
         if work_order is None:
             raise WorkOrderNotFound(f"work order not found: {work_order_id}")
+        if self.project_service is not None and self.project_service.repository.list_projects():
+            if (
+                actor.tenant_id is None or actor.application_id is None
+                or actor.project_id is None or work_order.tenant_id != actor.tenant_id
+                or work_order.application_id != actor.application_id
+                or work_order.project_id != actor.project_id
+            ):
+                raise WorkOrderPermissionDenied(
+                    "attachment does not belong to the active project context"
+                )
+            try:
+                self.project_service.require_operational_permission(
+                    actor.project_id, ProjectActor(actor.user_id, actor.active_org_id),
+                    permission_code, allow_archived=permission_code == "workorder:view",
+                )
+            except Exception as error:
+                raise WorkOrderPermissionDenied(str(error)) from error
         return work_order
 
     @staticmethod

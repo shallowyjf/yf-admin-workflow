@@ -132,11 +132,15 @@ def get_dashboard_service(
     workflow_service = build_workflow_service(session, identity.context.tenant_id)
     notification_service = NotificationService(NotificationRepository(session))
     work_order_repository = WorkOrderRepository(session)
+    project_service = ProjectService(
+        ProjectRepository(session, identity.context.tenant_id), permission_service
+    )
     work_order_service = WorkOrderService(
         work_order_repository,
         permission_service,
         workflow_service,
         notification_service,
+        project_service,
     )
     return DashboardService(
         IAMService(iam_repository),
@@ -157,7 +161,9 @@ def get_dashboard_service(
         ),
         PermissionDictionaryService(iam_repository, permission_service),
         IAMAuditQueryService(iam_repository, permission_service),
-        WorkOrderAttachmentService(work_order_repository, permission_service),
+        WorkOrderAttachmentService(
+            work_order_repository, permission_service, project_service=project_service
+        ),
         notification_service,
         SavedViewService(SavedViewRepository(session)),
     )
@@ -206,7 +212,11 @@ async def _form_lists(request: Request) -> dict[str, list[str]]:
 
 
 def _actor(identity: PageIdentity) -> WorkOrderActor:
-    return WorkOrderActor(identity.context.current_user_id, identity.context.active_org_id)
+    return WorkOrderActor(
+        identity.context.current_user_id, identity.context.active_org_id,
+        identity.context.tenant_id, identity.context.active_application_id,
+        identity.context.active_project_id,
+    )
 
 
 def _friendly_error(

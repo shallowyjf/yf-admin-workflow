@@ -151,6 +151,53 @@ class ProjectService:
         self._require_project_permission(project, actor, "project:view")
         return project
 
+    def require_operational_permission(
+        self,
+        project_id: int,
+        actor: ProjectActor,
+        permission_code: str,
+        *,
+        allow_archived: bool = False,
+    ) -> Project:
+        """Authorize a business operation in one project data space."""
+        project = self._require_project(project_id)
+        self._require_project_permission(project, actor, permission_code)
+        if project.project_status == "ARCHIVED" and not allow_archived:
+            raise ProjectPermissionDenied("项目已归档，仅允许只读访问")
+        if project.project_status == "SUSPENDED" and permission_code != "workorder:view":
+            raise ProjectPermissionDenied("项目已暂停，仅允许只读访问")
+        return project
+
+    def filter_operational_candidates(
+        self,
+        project_id: int,
+        candidate_user_ids: set[int],
+        permission_code: str,
+    ) -> set[int]:
+        """Keep candidates who hold both org and project-role permission."""
+        if not self.repository.list_projects():
+            return candidate_user_ids
+        project = self._require_project(project_id)
+        if project.project_status != "ACTIVE":
+            return set()
+        allowed: set[int] = set()
+        for user_id in candidate_user_ids:
+            if project.application_id not in {
+                application.id
+                for application in self.repository.list_user_applications(user_id)
+            }:
+                continue
+            members = self.repository.list_project_members_for_user(project.id, user_id)
+            if any(
+                self.repository.role_has_permission(member.role_id, permission_code)
+                and self.permission_service.has_permission(
+                    user_id, permission_code, member.membership.org_id
+                )
+                for member in members
+            ):
+                allowed.add(user_id)
+        return allowed
+
     def create(
         self,
         command: CreateProjectCommand,

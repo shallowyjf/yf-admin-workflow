@@ -66,21 +66,29 @@ class WorkOrderRepository:
         scope: WorkOrderScopeFilter,
         *,
         include_owner_org: bool = True,
+        tenant_id: int | None = None,
+        application_id: int | None = None,
+        project_id: int | None = None,
     ) -> WorkOrder | None:
+        conditions = [
+            WorkOrder.id == work_order_id,
+            self._scope_condition(scope, include_owner_org=include_owner_org),
+        ]
+        conditions.extend(self._context_conditions(tenant_id, application_id, project_id))
         return self.session.scalar(
-            select(WorkOrder).where(
-                WorkOrder.id == work_order_id,
-                self._scope_condition(scope, include_owner_org=include_owner_org),
-            )
+            select(WorkOrder).where(*conditions)
         )
 
-    def list_visible(self, scope: WorkOrderScopeFilter) -> list[WorkOrder]:
+    def list_visible(
+        self, scope: WorkOrderScopeFilter, *, tenant_id: int | None = None,
+        application_id: int | None = None, project_id: int | None = None,
+    ) -> list[WorkOrder]:
+        conditions = [self._scope_condition(scope, include_owner_org=True)]
+        conditions.extend(self._context_conditions(tenant_id, application_id, project_id))
         return list(
             self.session.scalars(
                 select(WorkOrder)
-                .where(
-                    self._scope_condition(scope, include_owner_org=True)
-                )
+                .where(*conditions)
                 .order_by(WorkOrder.created_at.desc(), WorkOrder.id.desc())
             )
         )
@@ -89,8 +97,13 @@ class WorkOrderRepository:
         self,
         scope: WorkOrderScopeFilter,
         query: WorkOrderListQuery,
+        *,
+        tenant_id: int | None = None,
+        application_id: int | None = None,
+        project_id: int | None = None,
     ) -> WorkOrderPage:
         conditions = [self._scope_condition(scope, include_owner_org=True)]
+        conditions.extend(self._context_conditions(tenant_id, application_id, project_id))
         keyword = (query.keyword or "").strip()
         if keyword:
             pattern = f"%{keyword}%"
@@ -183,6 +196,21 @@ class WorkOrderRepository:
                 WorkOrder.work_order_no.like(f"{prefix}%")
             )
         )
+
+    @staticmethod
+    def _context_conditions(
+        tenant_id: int | None,
+        application_id: int | None,
+        project_id: int | None,
+    ) -> list:
+        conditions = []
+        if tenant_id is not None:
+            conditions.append(WorkOrder.tenant_id == tenant_id)
+        if application_id is not None:
+            conditions.append(WorkOrder.application_id == application_id)
+        if project_id is not None:
+            conditions.append(WorkOrder.project_id == project_id)
+        return conditions
 
     @staticmethod
     def _scope_condition(

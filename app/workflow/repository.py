@@ -159,7 +159,17 @@ class WorkflowRepository:
         )
         return result.rowcount == 1
 
-    def list_my_tasks(self, user_id: int) -> list[WorkflowTask]:
+    def list_my_tasks(
+        self, user_id: int, *, tenant_id: int | None = None,
+        application_id: int | None = None, project_id: int | None = None,
+    ) -> list[WorkflowTask]:
+        context_conditions = []
+        if tenant_id is not None:
+            context_conditions.append(WorkflowTask.tenant_id == tenant_id)
+        if application_id is not None:
+            context_conditions.append(WorkflowTask.application_id == application_id)
+        if project_id is not None:
+            context_conditions.append(WorkflowTask.project_id == project_id)
         statement = (
             select(WorkflowTask)
             .join(WorkflowInstance, WorkflowInstance.id == WorkflowTask.instance_id)
@@ -168,6 +178,7 @@ class WorkflowRepository:
                 WorkflowTaskCandidate.task_id == WorkflowTask.id,
             )
             .where(
+                *context_conditions,
                 or_(
                     and_(
                         WorkflowTask.status == WorkflowTaskStatus.PENDING.value,

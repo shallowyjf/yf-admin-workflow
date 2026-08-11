@@ -31,6 +31,9 @@ def _task_response(task: WorkflowTask, user_id: int) -> MyTaskResponse:
     return MyTaskResponse(
         id=task.id,
         instance_id=task.instance_id,
+        tenant_id=task.tenant_id,
+        application_id=task.application_id,
+        project_id=task.project_id,
         business_type=task.instance.business_type,
         business_id=task.instance.business_id,
         task_type=task.task_type,
@@ -49,5 +52,8 @@ def list_my_tasks(
 ) -> list[MyTaskResponse]:
     return [
         _task_response(task, context.current_user_id)
-        for task in service.list_my_tasks(context.current_user_id)
+        for task in service.list_my_tasks(
+            context.current_user_id, context.tenant_id,
+            context.active_application_id, context.active_project_id,
+        )
     ]

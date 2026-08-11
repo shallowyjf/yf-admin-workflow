@@ -13,6 +13,8 @@ from app.iam.authorization import PermissionService
 from app.iam.repository import IAMRepository
 from app.notification.repository import NotificationRepository
 from app.notification.service import NotificationService
+from app.project.repository import ProjectRepository
+from app.project.service import ProjectService
 from app.workflow.domain import TaskAccessDenied, WorkflowError
 from app.workflow.factory import build_workflow_service
 
@@ -55,11 +57,16 @@ def get_work_order_service(
     session: Annotated[Session, Depends(get_db_session)],
     context: Annotated[RequestContext, Depends(get_request_context)],
 ) -> WorkOrderService:
+    permission_service = PermissionService(IAMRepository(session, context.tenant_id))
+    project_service = ProjectService(
+        ProjectRepository(session, context.tenant_id), permission_service
+    )
     return WorkOrderService(
         WorkOrderRepository(session),
-        PermissionService(IAMRepository(session, context.tenant_id)),
+        permission_service,
         build_workflow_service(session, context.tenant_id),
         NotificationService(NotificationRepository(session)),
+        project_service,
     )
 
 
@@ -67,9 +74,13 @@ def get_attachment_service(
     session: Annotated[Session, Depends(get_db_session)],
     context: Annotated[RequestContext, Depends(get_request_context)],
 ) -> WorkOrderAttachmentService:
+    permission_service = PermissionService(IAMRepository(session, context.tenant_id))
     return WorkOrderAttachmentService(
         WorkOrderRepository(session),
-        PermissionService(IAMRepository(session, context.tenant_id)),
+        permission_service,
+        project_service=ProjectService(
+            ProjectRepository(session, context.tenant_id), permission_service
+        ),
     )
 
 
@@ -80,12 +91,18 @@ def get_batch_service(
 
 
 def _actor(context: RequestContext) -> WorkOrderActor:
-    return WorkOrderActor(context.current_user_id, context.active_org_id)
+    return WorkOrderActor(
+        context.current_user_id, context.active_org_id, context.tenant_id,
+        context.active_application_id, context.active_project_id,
+    )
 
 
 def _order_response(work_order: WorkOrder) -> WorkOrderResponse:
     return WorkOrderResponse(
         id=work_order.id,
+        tenant_id=work_order.tenant_id,
+        application_id=work_order.application_id,
+        project_id=work_order.project_id,
         work_order_no=work_order.work_order_no,
         title=work_order.title,
         type=work_order.work_order_type,

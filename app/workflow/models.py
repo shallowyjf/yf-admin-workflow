@@ -46,8 +46,21 @@ class WorkflowInstance(IdTimestampMixin, Base):
     __table_args__ = (
         UniqueConstraint("business_type", "business_id", name="uq_wf_instance_business"),
         Index("ix_wf_instance_definition_id", "definition_id"),
+        Index("ix_wf_instance_context", "tenant_id", "application_id", "project_id"),
     )
 
+    tenant_id: Mapped[int] = mapped_column(
+        ForeignKey("sys_tenant.id", ondelete="RESTRICT"), nullable=False,
+        default=1, server_default=text("1"),
+    )
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("sys_application.id", ondelete="RESTRICT"), nullable=False,
+        default=1, server_default=text("1"),
+    )
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("pm_project.id", ondelete="RESTRICT"), nullable=False,
+        default=1, server_default=text("1"),
+    )
     definition_id: Mapped[int] = mapped_column(
         ForeignKey("wf_definition.id", ondelete="RESTRICT"),
         nullable=False,
@@ -78,8 +91,24 @@ class WorkflowTask(IdTimestampMixin, Base):
     __table_args__ = (
         Index("ix_wf_task_status_assignee_id", "status", "assignee_id"),
         Index("ix_wf_task_instance_id", "instance_id"),
+        Index(
+            "ix_wf_task_context_status",
+            "tenant_id", "application_id", "project_id", "status",
+        ),
     )
 
+    tenant_id: Mapped[int] = mapped_column(
+        ForeignKey("sys_tenant.id", ondelete="RESTRICT"), nullable=False,
+        default=1, server_default=text("1"),
+    )
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("sys_application.id", ondelete="RESTRICT"), nullable=False,
+        default=1, server_default=text("1"),
+    )
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("pm_project.id", ondelete="RESTRICT"), nullable=False,
+        default=1, server_default=text("1"),
+    )
     instance_id: Mapped[int] = mapped_column(
         ForeignKey("wf_instance.id", ondelete="CASCADE"),
         nullable=False,

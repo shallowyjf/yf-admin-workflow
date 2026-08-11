@@ -35,20 +35,27 @@ class WorkflowService:
         repository: WorkflowRepository,
         candidate_resolvers: CandidateResolverRegistry,
         task_access: TaskAccessService | None = None,
+        candidate_filter: Callable[[int, set[int], str], set[int]] | None = None,
         *,
         clock: Callable[[], datetime] = datetime.now,
     ) -> None:
         self.repository = repository
         self.candidate_resolvers = candidate_resolvers
         self.task_access = task_access or TaskAccessService()
+        self.candidate_filter = candidate_filter
         self.clock = clock
 
     def start_for_workorder(
         self,
         workorder_id: int,
         initiator_id: int,
+        tenant_id: int = 1,
+        application_id: int = 1,
+        project_id: int = 1,
     ) -> WorkflowInstance:
-        instance = self._new_instance(workorder_id, initiator_id)
+        instance = self._new_instance(
+            workorder_id, initiator_id, tenant_id, application_id, project_id
+        )
         self.repository.commit()
         self.repository.refresh(instance)
         return instance
@@ -57,10 +64,15 @@ class WorkflowService:
         self,
         work_order_id: int,
         initiator_id: int,
+        tenant_id: int = 1,
+        application_id: int = 1,
+        project_id: int = 1,
     ) -> WorkflowInstance:
         """Atomically start a submitted work order and create its dispatch task."""
         try:
-            instance = self._new_instance(work_order_id, initiator_id)
+            instance = self._new_instance(
+                work_order_id, initiator_id, tenant_id, application_id, project_id
+            )
             self._new_task(
                 instance,
                 self.FIRST_TASK_TYPE,
@@ -97,8 +109,14 @@ class WorkflowService:
         self.repository.refresh(task)
         return task
 
-    def list_my_tasks(self, user_id: int) -> list[WorkflowTask]:
-        return self.repository.list_my_tasks(user_id)
+    def list_my_tasks(
+        self, user_id: int, tenant_id: int | None = None,
+        application_id: int | None = None, project_id: int | None = None,
+    ) -> list[WorkflowTask]:
+        return self.repository.list_my_tasks(
+            user_id, tenant_id=tenant_id,
+            application_id=application_id, project_id=project_id,
+        )
 
     def dispatch_workorder(
         self,
@@ -367,6 +385,9 @@ class WorkflowService:
         self,
         work_order_id: int,
         initiator_id: int,
+        tenant_id: int = 1,
+        application_id: int = 1,
+        project_id: int = 1,
     ) -> WorkflowInstance:
         if self.repository.get_instance_for_business(
             self.BUSINESS_TYPE,
@@ -381,6 +402,9 @@ class WorkflowService:
                 f"active workflow definition not found: {self.DEFINITION_CODE}"
             )
         instance = WorkflowInstance(
+            tenant_id=tenant_id,
+            application_id=application_id,
+            project_id=project_id,
             definition_id=definition.id,
             business_type=self.BUSINESS_TYPE,
             business_id=work_order_id,
@@ -409,6 +433,15 @@ class WorkflowService:
         if not normalized_task_type:
             raise ValueError("task_type must not be blank")
         candidate_ids = self.candidate_resolvers.resolve(candidate_rule)
+        if self.candidate_filter is not None:
+            permission_code = {
+                "DISPATCH": "workorder:dispatch",
+                "HANDLE": "workorder:handle",
+                "REVIEW": "workorder:review",
+            }.get(normalized_task_type, "workorder:view")
+            candidate_ids = self.candidate_filter(
+                instance.project_id, set(candidate_ids), permission_code
+            )
         if not candidate_ids:
             raise NoWorkflowCandidates(
                 f"candidate rule resolved no users: {candidate_rule.candidate_type}"
@@ -416,6 +449,9 @@ class WorkflowService:
         rule_payload = self._candidate_rule_payload(candidate_rule)
         task = WorkflowTask(
             instance_id=instance.id,
+            tenant_id=instance.tenant_id,
+            application_id=instance.application_id,
+            project_id=instance.project_id,
             task_type=normalized_task_type,
             status=WorkflowTaskStatus.PENDING.value,
             candidate_rule_json=rule_payload,

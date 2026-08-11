@@ -54,6 +54,9 @@ class ReviewWorkOrderRequest(BaseModel):
 
 class WorkOrderResponse(BaseModel):
     id: int
+    tenant_id: int
+    application_id: int
+    project_id: int
     work_order_no: str
     title: str
     type: str

@@ -167,7 +167,10 @@ class DashboardService:
             work_orders = self.work_order_service.list_visible(actor)
         except WorkOrderPermissionDenied:
             work_orders = []
-        tasks = self.workflow_service.list_my_tasks(profile.user_id)
+        tasks = self.workflow_service.list_my_tasks(
+            profile.user_id, profile.tenant_id,
+            profile.active_application_id, profile.active_project_id,
+        )
         stats = Counter(work_order.status for work_order in work_orders)
         recent_actions = []
         for work_order in work_orders[:8]:
@@ -422,7 +425,10 @@ class DashboardService:
 
     @staticmethod
     def _actor(profile: AuthProfile) -> WorkOrderActor:
-        return WorkOrderActor(profile.user_id, profile.active_org_id)
+        return WorkOrderActor(
+            profile.user_id, profile.active_org_id, profile.tenant_id,
+            profile.active_application_id, profile.active_project_id,
+        )
 
     @staticmethod
     def _iam_actor(profile: AuthProfile) -> IAMAdministrationActor:

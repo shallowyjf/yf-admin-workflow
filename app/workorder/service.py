@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Protocol
 
 from app.iam.authorization import PermissionService, WorkOrderScopeFilter
+from app.project.service import ProjectActor, ProjectService
 
 from .domain import (
     InvalidWorkOrderTransition,
@@ -25,6 +26,9 @@ from .sla import DEFAULT_SLA_POLICIES, SlaCalendar
 class WorkOrderActor:
     user_id: int
     active_org_id: int
+    tenant_id: int | None = None
+    application_id: int | None = None
+    project_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -55,6 +59,9 @@ class WorkflowActionPort(Protocol):
         self,
         work_order_id: int,
         initiator_id: int,
+        tenant_id: int = 1,
+        application_id: int = 1,
+        project_id: int = 1,
     ) -> object: ...
 
     def dispatch_workorder(
@@ -123,6 +130,7 @@ class WorkOrderService:
         permission_service: PermissionService,
         workflow_actions: WorkflowActionPort | None = None,
         notification_service: NotificationPort | None = None,
+        project_service: ProjectService | None = None,
         *,
         clock: Callable[[], datetime] = datetime.now,
     ) -> None:
@@ -130,6 +138,7 @@ class WorkOrderService:
         self.permission_service = permission_service
         self.workflow_actions = workflow_actions
         self.notification_service = notification_service
+        self.project_service = project_service
         self.number_service = WorkOrderNumberService(repository)
         self.clock = clock
 
@@ -139,6 +148,7 @@ class WorkOrderService:
         actor: WorkOrderActor,
     ) -> WorkOrder:
         self._require_permission(actor, self.CREATE_PERMISSION)
+        self._require_project_access(actor, self.CREATE_PERMISSION)
         title = command.title.strip()
         work_order_type = command.work_order_type.strip()
         priority = command.priority.strip().upper()
@@ -185,6 +195,9 @@ class WorkOrderService:
                 sla_policy.calendar_code,
             )
         work_order = WorkOrder(
+            tenant_id=actor.tenant_id or 1,
+            application_id=actor.application_id or 1,
+            project_id=actor.project_id or 1,
             work_order_no=self.number_service.next_number(now),
             title=title,
             work_order_type=work_order_type,
@@ -230,6 +243,7 @@ class WorkOrderService:
         work_order = self.repository.get(work_order_id)
         if work_order is None:
             raise WorkOrderNotFound(f"work order not found: {work_order_id}")
+        self._require_project_access(actor, self.CREATE_PERMISSION, work_order)
         if work_order.created_by != actor.user_id:
             raise WorkOrderPermissionDenied("only the creator can submit a draft")
 
@@ -250,12 +264,17 @@ class WorkOrderService:
             self.workflow_actions.start_submitted_workorder(
                 work_order.id,
                 actor.user_id,
+                work_order.tenant_id,
+                work_order.application_id,
+                work_order.project_id,
             )
         self.repository.refresh(work_order)
         return work_order
 
     def list_visible(self, actor: WorkOrderActor) -> list[WorkOrder]:
-        return self.repository.list_visible(self._view_scope(actor))
+        return self.repository.list_visible(
+            self._view_scope(actor), **self._context_kwargs(actor)
+        )
 
     def search_visible(
         self,
@@ -274,7 +293,9 @@ class WorkOrderService:
             raise WorkOrderValidationError("unsupported sort field")
         if query.sort_direction not in {"asc", "desc"}:
             raise WorkOrderValidationError("sort_direction must be asc or desc")
-        return self.repository.search_visible(self._view_scope(actor), query)
+        return self.repository.search_visible(
+            self._view_scope(actor), query, **self._context_kwargs(actor)
+        )
 
     def dispatch(
         self,
@@ -317,6 +338,7 @@ class WorkOrderService:
     ) -> WorkOrder:
         self._require_permission(actor, "workorder:claim")
         work_order = self._get(work_order_id)
+        self._require_project_access(actor, "workorder:claim", work_order)
         occurred_at = self.clock()
         from_status, to_status = work_order.claim(actor.user_id)
         work_order.mark_responded(occurred_at)
@@ -350,6 +372,7 @@ class WorkOrderService:
         if not normalized_result:
             raise WorkOrderValidationError("result must not be blank")
         work_order = self._get(work_order_id)
+        self._require_project_access(actor, "workorder:handle", work_order)
         from_status, to_status = work_order.submit_result()
         payload = {"result": normalized_result}
         self._record_action(
@@ -394,6 +417,14 @@ class WorkOrderService:
         ):
             raise WorkOrderValidationError(
                 "target user must be an active handler in the current organization"
+            )
+        if self.project_service is not None and target_user_id not in (
+            self.project_service.filter_operational_candidates(
+                work_order.project_id, {target_user_id}, "workorder:handle"
+            )
+        ):
+            raise WorkOrderValidationError(
+                "target user must be an active handler member of the current project"
             )
         previous_assignee_id = work_order.transfer(target_user_id)
         normalized_comment = self._optional_comment(comment)
@@ -502,7 +533,8 @@ class WorkOrderService:
             permission_code,
             actor.active_org_id,
         )
-        work_orders = self.repository.list_visible(scope)
+        self._require_project_access(actor, permission_code)
+        work_orders = self.repository.list_visible(scope, **self._context_kwargs(actor))
         now = self.clock()
         response_breaches = 0
         resolution_breaches = 0
@@ -576,6 +608,7 @@ class WorkOrderService:
         self._require_permission(actor, "workorder:review")
         normalized_decision = decision.strip().upper()
         work_order = self._get(work_order_id)
+        self._require_project_access(actor, "workorder:review", work_order)
         if normalized_decision == WorkOrderActionType.APPROVE.value:
             from_status, to_status = work_order.approve(self.clock())
             action_type = WorkOrderActionType.APPROVE
@@ -633,7 +666,9 @@ class WorkOrderService:
         return work_order
 
     def get_visible(self, work_order_id: int, actor: WorkOrderActor) -> WorkOrder:
-        work_order = self.repository.get_visible(work_order_id, self._view_scope(actor))
+        work_order = self.repository.get_visible(
+            work_order_id, self._view_scope(actor), **self._context_kwargs(actor)
+        )
         if work_order is None:
             raise WorkOrderNotFound(f"work order not found: {work_order_id}")
         return work_order
@@ -648,6 +683,7 @@ class WorkOrderService:
 
     def _view_scope(self, actor: WorkOrderActor) -> WorkOrderScopeFilter:
         self._require_permission(actor, self.VIEW_PERMISSION)
+        self._require_project_access(actor, self.VIEW_PERMISSION, allow_archived=True)
         return self.permission_service.work_order_scope(
             actor.user_id,
             self.VIEW_PERMISSION,
@@ -678,9 +714,11 @@ class WorkOrderService:
             work_order_id,
             scope,
             include_owner_org=include_owner_org,
+            **self._context_kwargs(actor),
         )
         if work_order is None:
             raise WorkOrderNotFound(f"work order not found: {work_order_id}")
+        self._require_project_access(actor, permission_code, work_order)
         return work_order
 
     def _record_action(
@@ -765,3 +803,43 @@ class WorkOrderService:
             actor.active_org_id,
         ):
             raise WorkOrderPermissionDenied(f"missing permission: {permission_code}")
+
+    @staticmethod
+    def _context_kwargs(actor: WorkOrderActor) -> dict[str, int | None]:
+        return {
+            "tenant_id": actor.tenant_id,
+            "application_id": actor.application_id,
+            "project_id": actor.project_id,
+        }
+
+    def _require_project_access(
+        self,
+        actor: WorkOrderActor,
+        permission_code: str,
+        work_order: WorkOrder | None = None,
+        *,
+        allow_archived: bool = False,
+    ) -> None:
+        if self.project_service is None:
+            return
+        if not self.project_service.repository.list_projects():
+            return
+        if actor.tenant_id is None or actor.application_id is None or actor.project_id is None:
+            raise WorkOrderPermissionDenied("请先选择有效的生命线系统和项目")
+        if work_order is not None and (
+            work_order.tenant_id != actor.tenant_id
+            or work_order.application_id != actor.application_id
+            or work_order.project_id != actor.project_id
+        ):
+            raise WorkOrderPermissionDenied("工单不属于当前租户、系统或项目上下文")
+        try:
+            project = self.project_service.require_operational_permission(
+                actor.project_id,
+                ProjectActor(actor.user_id, actor.active_org_id),
+                permission_code,
+                allow_archived=allow_archived,
+            )
+        except Exception as error:
+            raise WorkOrderPermissionDenied(str(error)) from error
+        if project.tenant_id != actor.tenant_id or project.application_id != actor.application_id:
+            raise WorkOrderPermissionDenied("当前系统与项目不匹配")

@@ -30,12 +30,25 @@ from .state_machine import WorkOrderStateMachine
 class WorkOrder(IdTimestampMixin, Base):
     __tablename__ = "wo_work_order"
     __table_args__ = (
+        Index("ix_wo_work_order_context", "tenant_id", "application_id", "project_id"),
         Index("ix_wo_work_order_status", "status"),
         Index("ix_wo_work_order_current_org_id", "current_org_id"),
         Index("ix_wo_work_order_current_assignee_id", "current_assignee_id"),
         Index("ix_wo_work_order_created_at", "created_at"),
     )
 
+    tenant_id: Mapped[int] = mapped_column(
+        ForeignKey("sys_tenant.id", ondelete="RESTRICT"), nullable=False,
+        default=1, server_default=text("1"),
+    )
+    application_id: Mapped[int] = mapped_column(
+        ForeignKey("sys_application.id", ondelete="RESTRICT"), nullable=False,
+        default=1, server_default=text("1"),
+    )
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("pm_project.id", ondelete="RESTRICT"), nullable=False,
+        default=1, server_default=text("1"),
+    )
     work_order_no: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
     title: Mapped[str] = mapped_column(String(240), nullable=False)
     work_order_type: Mapped[str] = mapped_column("type", String(60), nullable=False)
