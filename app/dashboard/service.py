@@ -118,6 +118,14 @@ class DashboardService:
                     "href": "/lifeline",
                 }
             )
+        if "project:progress:view" in permissions:
+            navigation.append(
+                {
+                    "code": "project-progress",
+                    "label": "项目进度驾驶舱",
+                    "href": "/project-progress",
+                }
+            )
         if "workorder:view" in permissions:
             navigation.append(
                 {"code": "workorders", "label": "工单中心", "href": "/workorders"}

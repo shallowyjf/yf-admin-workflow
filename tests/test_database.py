@@ -11,6 +11,7 @@ def test_shared_declarative_base_contains_current_tables() -> None:
     assert set(Base.metadata.tables) == {
         "pm_project",
         "pm_project_member",
+        "pm_project_milestone",
         "pm_project_org",
         "sys_application",
         "sys_auth_session",

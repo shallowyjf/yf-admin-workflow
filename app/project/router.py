@@ -16,10 +16,13 @@ from .schemas import (
     AuthorizationExplanationResponse,
     CreateProjectRequest,
     LifelineStructureResponse,
+    ProjectProgressDashboardResponse,
+    ProjectProgressResponse,
     ProjectResponse,
     ReplaceProjectMembersRequest,
     ReplaceProjectOrganizationsRequest,
     ReplaceUserApplicationsRequest,
+    UpdateMilestoneRequest,
     UpdateProjectRequest,
     UserApplicationAccessResponse,
 )
@@ -33,6 +36,7 @@ from .service import (
     ProjectPermissionDenied,
     ProjectService,
     ProjectValidationError,
+    UpdateMilestoneCommand,
     UpdateProjectCommand,
 )
 
@@ -80,6 +84,18 @@ def lifeline_structure(
     except ProjectPermissionDenied as error:
         _raise_http(error)
     return LifelineStructureResponse.model_validate(structure)
+
+
+@router.get("/progress", response_model=ProjectProgressDashboardResponse)
+def project_progress_dashboard(
+    context: Annotated[RequestContext, Depends(get_request_context)],
+    service: Annotated[ProjectService, Depends(get_project_service)],
+) -> ProjectProgressDashboardResponse:
+    try:
+        result = service.progress_dashboard(_actor(context))
+    except ProjectPermissionDenied as error:
+        _raise_http(error)
+    return ProjectProgressDashboardResponse.model_validate(result)
 
 
 @router.get("/projects", response_model=list[ProjectResponse])
@@ -142,6 +158,29 @@ def update_project(
     except (ProjectPermissionDenied, ProjectNotFound, ProjectValidationError) as error:
         _raise_http(error)
     return _project_response(service, project)
+
+
+@router.put(
+    "/projects/{project_id}/milestones/{milestone_id}",
+    response_model=ProjectProgressResponse,
+)
+def update_project_milestone(
+    project_id: int,
+    milestone_id: int,
+    command: UpdateMilestoneRequest,
+    context: Annotated[RequestContext, Depends(get_request_context)],
+    service: Annotated[ProjectService, Depends(get_project_service)],
+) -> ProjectProgressResponse:
+    try:
+        result = service.update_milestone(
+            project_id,
+            milestone_id,
+            UpdateMilestoneCommand(**command.model_dump()),
+            _actor(context),
+        )
+    except (ProjectPermissionDenied, ProjectNotFound, ProjectValidationError) as error:
+        _raise_http(error)
+    return ProjectProgressResponse.model_validate(result)
 
 
 @router.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -17,6 +17,7 @@ from app.project.models import (
     Application,
     Project,
     ProjectMember,
+    ProjectMilestone,
     ProjectOrganization,
     TenantApplication,
     UserApplicationAccess,
@@ -67,6 +68,7 @@ def test_project_seed_is_idempotent_and_builds_default_structure(db_session) -> 
     assert db_session.scalar(select(func.count()).select_from(Project)) == 5
     assert db_session.scalar(select(func.count()).select_from(ProjectOrganization)) == 20
     assert db_session.scalar(select(func.count()).select_from(ProjectMember)) == 36
+    assert db_session.scalar(select(func.count()).select_from(ProjectMilestone)) == 20
     assert (
         db_session.scalar(select(func.count()).select_from(UserApplicationAccess))
         == 36

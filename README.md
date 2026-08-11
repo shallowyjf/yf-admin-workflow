@@ -1,6 +1,6 @@
 # 统一权限与流程工单平台 Python Demo
 
-这是正式系统前的可运行架构原型，用于逐轮验证 SaaS 租户、城市生命线多系统、工程项目数据权限、IAM、CandidateResolver、WorkflowTask 与 WorkOrder 的领域边界。当前代码已完成 **I22：项目工单与流程闭环**。
+这是正式系统前的可运行架构原型，用于逐轮验证 SaaS 租户、城市生命线多系统、工程项目数据权限、IAM、CandidateResolver、WorkflowTask 与 WorkOrder 的领域边界。当前代码已完成 **I23：演示级项目进度驾驶舱**。
 
 ## 环境
 
@@ -36,6 +36,7 @@ Copy-Item .env.example .env
 - 演示登录页：<http://127.0.0.1:8000/login>
 - 页面工作台：<http://127.0.0.1:8000/dashboard>
 - 城市生命线权限结构：<http://127.0.0.1:8000/lifeline>
+- 项目进度驾驶舱：<http://127.0.0.1:8000/project-progress>
 - OpenAPI：<http://127.0.0.1:8000/docs>
 
 ## 回归测试与质量检查
@@ -82,6 +83,6 @@ Copy-Item .env.example .env
 
 ## 当前边界
 
-V0.1 已形成组织、用户、角色、岗位、权限、数据范围和 IAM 审计配置闭环，并可执行标准 DMA 工单闭环。I19 增加租户隔离；I20 增加五类生命线系统与工程项目；I21 增加系统入口和项目授权；I22 已将工单、流程实例、流程任务及候选人解析纳入租户—系统—项目边界。它仍是本地 Demo：领导驾驶舱、空间资源权限、认证安全加固、授权治理、对象存储/外部通知、不可篡改审计和生产运维属于真实上线前置范围。
+V0.1 已形成组织、用户、角色、岗位、权限、数据范围和 IAM 审计配置闭环，并可执行标准 DMA 工单闭环。I19 增加租户隔离；I20 增加五类生命线系统与工程项目；I21 增加系统入口和项目授权；I22 将工单流程纳入项目边界；I23 增加演示级里程碑与多系统项目进度驾驶舱。它仍是本地 Demo：实时数据汇聚、空间资源权限、认证安全加固、授权治理、对象存储/外部通知、不可篡改审计和生产运维属于真实上线前置范围。
 
-Demo 租户编码为 `DEMO`；用户为 `admin`、`owner_leader`、`wangwu`、`regulator`、`zhangsan`、`lisi`、`zhaoliu`、`platform_ops`，初始密码统一为 `Demo@123456`，仅限本地演示。完整需求见 `docs/PERMISSION_WORKORDER_REQUIREMENTS.md`，本轮验收见 `docs/iterations/I22.md`，后续路线见 `docs/iterations/ROADMAP_I20_I25.md`。
+Demo 租户编码为 `DEMO`；用户为 `admin`、`owner_leader`、`wangwu`、`regulator`、`zhangsan`、`lisi`、`zhaoliu`、`platform_ops`，初始密码统一为 `Demo@123456`，仅限本地演示。完整需求见 `docs/PERMISSION_WORKORDER_REQUIREMENTS.md`，本轮验收见 `docs/iterations/I23.md`，后续路线见 `docs/iterations/ROADMAP_I20_I25.md`。

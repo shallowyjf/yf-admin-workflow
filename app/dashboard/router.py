@@ -75,6 +75,7 @@ from app.project.service import (
     ProjectPermissionDenied,
     ProjectService,
     ProjectValidationError,
+    UpdateMilestoneCommand,
     UpdateProjectCommand,
 )
 from app.workflow.domain import TaskAccessDenied, WorkflowError
@@ -331,6 +332,72 @@ def lifeline_page(
         "城市生命线权限结构",
         "lifeline",
         structure,
+    )
+
+
+@router.get("/project-progress", response_class=HTMLResponse, include_in_schema=False)
+def project_progress_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    dashboard_service: Annotated[DashboardService, Depends(get_dashboard_service)],
+    project_service: Annotated[ProjectService, Depends(get_page_project_service)],
+) -> HTMLResponse:
+    try:
+        result = project_service.progress_dashboard(
+            ProjectActor(
+                identity.context.current_user_id,
+                identity.context.active_org_id,
+            )
+        )
+    except ProjectPermissionDenied as error:
+        raise PageAccessDenied(str(error)) from error
+    return _page(
+        request,
+        dashboard_service,
+        identity,
+        "project_progress.html",
+        "项目进度驾驶舱",
+        "project-progress",
+        result,
+    )
+
+
+@router.post(
+    "/ui/projects/{project_id}/milestones/{milestone_id}",
+    include_in_schema=False,
+    response_model=None,
+)
+async def update_project_milestone_page(
+    request: Request,
+    project_id: int,
+    milestone_id: int,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    dashboard_service: Annotated[DashboardService, Depends(get_dashboard_service)],
+    project_service: Annotated[ProjectService, Depends(get_page_project_service)],
+) -> HTMLResponse | RedirectResponse:
+    values = await _form(request)
+    try:
+        project_service.update_milestone(
+            project_id,
+            milestone_id,
+            UpdateMilestoneCommand(
+                actual_percent=int(values.get("actual_percent", "0")),
+                status=values.get("status", ""),
+            ),
+            ProjectActor(
+                identity.context.current_user_id,
+                identity.context.active_org_id,
+            ),
+        )
+    except (
+        ProjectNotFound,
+        ProjectPermissionDenied,
+        ProjectValidationError,
+        ValueError,
+    ) as error:
+        return _friendly_error(request, dashboard_service, identity, error)
+    return RedirectResponse(
+        "/project-progress", status_code=status.HTTP_303_SEE_OTHER
     )
 
 

@@ -1,7 +1,7 @@
 """Idempotent city lifeline system and engineering-project demo seed."""
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 
 from app.core.config import get_settings
 from app.db.session import Database
@@ -12,6 +12,7 @@ from .models import (
     Application,
     Project,
     ProjectMember,
+    ProjectMilestone,
     ProjectOrganization,
     TenantApplication,
     UserApplicationAccess,
@@ -99,6 +100,20 @@ PROJECT_WORKERS = {
     "ROAD_BRIDGE_MONITORING": ("zhaoliu",),
 }
 
+MILESTONES = (
+    ("DESIGN", "方案设计与审批", 20, 100),
+    ("CONSTRUCTION", "现场施工建设", 50, 75),
+    ("INTEGRATION", "设备接入与联调", 20, 40),
+    ("ACCEPTANCE", "项目验收与移交", 10, 0),
+)
+PROJECT_ACTUAL_PROGRESS = {
+    "WS_NETWORK_RENEWAL": (100, 72, 35, 0),
+    "DR_FLOOD_CONTROL": (100, 58, 20, 0),
+    "GAS_SAFETY_UPGRADE": (100, 86, 65, 10),
+    "HEAT_PIPE_RENOVATION": (100, 45, 15, 0),
+    "ROAD_BRIDGE_MONITORING": (100, 68, 42, 0),
+}
+
 
 @dataclass(frozen=True)
 class ProjectSeedSummary:
@@ -112,6 +127,7 @@ class ProjectSeedSummary:
         len(application_codes)
         for application_codes in USER_APPLICATIONS.values()
     )
+    milestones: int = len(PROJECTS) * len(MILESTONES)
 
 
 def seed_projects(
@@ -212,6 +228,33 @@ def seed_projects(
                         role_id=role.id,
                     )
                 )
+        duration_days = max((end_date - start_date).days, 1)
+        actual_values = PROJECT_ACTUAL_PROGRESS[project_code]
+        for index, ((code, milestone_name, weight, planned), actual) in enumerate(
+            zip(MILESTONES, actual_values, strict=True), start=1
+        ):
+            if not any(item.milestone_code == code for item in project.milestones):
+                if actual >= 100:
+                    milestone_status = "COMPLETED"
+                elif planned == 0:
+                    milestone_status = "NOT_STARTED"
+                elif actual + 10 < planned:
+                    milestone_status = "DELAYED"
+                else:
+                    milestone_status = "IN_PROGRESS"
+                repository.add(
+                    ProjectMilestone(
+                        project_id=project.id,
+                        milestone_code=code,
+                        milestone_name=milestone_name,
+                        weight=weight,
+                        planned_percent=planned,
+                        actual_percent=actual,
+                        status=milestone_status,
+                        due_date=start_date
+                        + timedelta(days=duration_days * index // len(MILESTONES)),
+                    )
+                )
         repository.commit()
 
     return ProjectSeedSummary()
@@ -231,7 +274,8 @@ def main() -> None:
             f"{summary.applications} systems, {summary.projects} projects, "
             f"{summary.project_organizations} party links, "
             f"{summary.project_members} member-role links, "
-            f"{summary.user_application_accesses} user-system grants"
+            f"{summary.user_application_accesses} user-system grants, "
+            f"{summary.milestones} milestones"
         )
     finally:
         database.dispose()

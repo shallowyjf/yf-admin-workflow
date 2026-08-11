@@ -17,6 +17,7 @@ from .models import (
     Application,
     Project,
     ProjectMember,
+    ProjectMilestone,
     ProjectOrganization,
     TenantApplication,
     UserApplicationAccess,
@@ -103,6 +104,7 @@ class ProjectRepository:
                 .selectinload(ProjectMember.membership)
                 .selectinload(UserOrganization.organization),
                 selectinload(Project.members).selectinload(ProjectMember.role),
+                selectinload(Project.milestones),
             )
         )
 
@@ -125,6 +127,16 @@ class ProjectRepository:
                 ProjectMember.project_id == project_id,
                 ProjectMember.user_org_id == user_org_id,
                 ProjectMember.role_id == role_id,
+            )
+        )
+
+    def get_milestone(
+        self, project_id: int, milestone_id: int
+    ) -> ProjectMilestone | None:
+        return self.session.scalar(
+            select(ProjectMilestone).where(
+                ProjectMilestone.id == milestone_id,
+                ProjectMilestone.project_id == project_id,
             )
         )
 
@@ -179,6 +191,7 @@ class ProjectRepository:
                     .selectinload(ProjectMember.membership)
                     .selectinload(UserOrganization.organization),
                     selectinload(Project.members).selectinload(ProjectMember.role),
+                    selectinload(Project.milestones),
                 )
                 .order_by(Project.application_id, Project.id)
             )

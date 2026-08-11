@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-intro">
+  <div><h2>城市生命线工程项目进度总览</h2><p>演示数据由项目里程碑加权计算，用于验证领导跨系统查看和项目成员数据隔离。</p></div>
+  <span class="result-count">{{ '全部项目视图' if can_view_all_projects else '本人参与项目' }}</span>
+</section>
+
+<section class="stats-grid" aria-label="项目进度统计">
+  <article class="stat-card accent"><span>可见项目</span><strong>{{ summary.project_count }}</strong><small>覆盖 {{ summary.system_count }} 个生命线系统</small></article>
+  <article class="stat-card"><span>整体实际进度</span><strong>{{ summary.overall_percent }}%</strong><small>里程碑权重汇总</small></article>
+  <article class="stat-card"><span>整体计划进度</span><strong>{{ summary.planned_percent }}%</strong><small>演示计划基线</small></article>
+  <article class="stat-card"><span>风险项目</span><strong>{{ summary.delayed_projects }}</strong><small>存在延期里程碑</small></article>
+</section>
+
+{% for project in projects %}
+<section class="panel">
+  <div class="panel-head">
+    <div><p class="eyebrow">{{ project.application_code }} · {{ project.project_code }}</p><h2>{{ project.project_name }}</h2></div>
+    <span class="status{% if project.risk_status == 'DELAYED' %} status-pending_dispatch{% else %} status-processing{% endif %}">{{ '存在延期' if project.risk_status == 'DELAYED' else '进度正常' }}</span>
+  </div>
+  <div class="split-grid">
+    <div><p class="meta-label">实际完成率 {{ project.actual_percent }}%</p><progress value="{{ project.actual_percent }}" max="100" style="width:100%;height:18px"></progress></div>
+    <div><p class="meta-label">计划完成率 {{ project.planned_percent }}% · 偏差 {{ project.variance_percent }}%</p><progress value="{{ project.planned_percent }}" max="100" style="width:100%;height:18px"></progress></div>
+  </div>
+  <div class="table-wrap"><table><thead><tr><th>里程碑</th><th>权重</th><th>计划</th><th>实际</th><th>状态</th><th>计划日期</th><th>演示操作</th></tr></thead><tbody>
+    {% for milestone in project.milestones %}
+    <tr><td><strong>{{ milestone.milestone_name }}</strong><small class="cell-sub">{{ milestone.milestone_code }}</small></td><td>{{ milestone.weight }}%</td><td>{{ milestone.planned_percent }}%</td><td>{{ milestone.actual_percent }}%</td><td><span class="status">{{ milestone.status }}</span></td><td>{{ milestone.due_date or '—' }}</td><td>
+      {% if project.can_update %}<form method="post" action="/ui/projects/{{ project.project_id }}/milestones/{{ milestone.id }}" class="inline-form"><input name="actual_percent" type="number" min="0" max="100" value="{{ milestone.actual_percent }}" required><select name="status">{% for item in ['NOT_STARTED','IN_PROGRESS','DELAYED','COMPLETED'] %}<option value="{{ item }}"{% if milestone.status == item %} selected{% endif %}>{{ item }}</option>{% endfor %}</select><button class="button ghost" type="submit">更新</button></form>{% else %}<small class="muted">只读</small>{% endif %}
+    </td></tr>
+    {% endfor %}
+  </tbody></table></div>
+</section>
+{% else %}
+<section class="panel empty"><strong>暂无可见项目</strong><span>当前账号没有项目进度查看范围。</span></section>
+{% endfor %}
+{% endblock %}

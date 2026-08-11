@@ -9,6 +9,7 @@ from sqlalchemy import (
     Date,
     ForeignKey,
     Index,
+    Integer,
     String,
     UniqueConstraint,
     text,
@@ -117,6 +118,34 @@ class Project(IdTimestampMixin, Base):
     members: Mapped[list[ProjectMember]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
+    milestones: Mapped[list[ProjectMilestone]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
+
+
+class ProjectMilestone(IdTimestampMixin, Base):
+    """Demo-level weighted milestone used by the I23 progress dashboard."""
+
+    __tablename__ = "pm_project_milestone"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id", "milestone_code", name="uq_project_milestone_code"
+        ),
+        Index("ix_project_milestone_project_status", "project_id", "status"),
+    )
+
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("pm_project.id", ondelete="CASCADE"), nullable=False
+    )
+    milestone_code: Mapped[str] = mapped_column(String(80), nullable=False)
+    milestone_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    weight: Mapped[int] = mapped_column(Integer, nullable=False)
+    planned_percent: Mapped[int] = mapped_column(Integer, nullable=False)
+    actual_percent: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False)
+    due_date: Mapped[date | None] = mapped_column(Date)
+
+    project: Mapped[Project] = relationship(back_populates="milestones")
 
 
 class ProjectOrganization(IdTimestampMixin, Base):

@@ -73,10 +73,19 @@ class ProjectMemberConfiguration:
     role_code: str
 
 
+@dataclass(frozen=True)
+class UpdateMilestoneCommand:
+    actual_percent: int
+    status: str
+
+
 class ProjectService:
     CODE_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]{1,79}$")
     STATUSES = frozenset({"PLANNED", "ACTIVE", "SUSPENDED", "ARCHIVED"})
     PARTY_TYPES = frozenset({"OWNER", "REGULATOR", "CONTRACTOR", "PLATFORM"})
+    MILESTONE_STATUSES = frozenset(
+        {"NOT_STARTED", "IN_PROGRESS", "DELAYED", "COMPLETED"}
+    )
     MANAGEMENT_ROLES = frozenset(
         {"SYSTEM_ADMIN", "OWNER_LEADER", "WORKORDER_MANAGER"}
     )
@@ -145,6 +154,81 @@ class ProjectService:
                 actor, "project:progress:view-all"
             ),
         )
+
+    def progress_dashboard(self, actor: ProjectActor) -> dict:
+        """Return the lightweight I23 demo read model."""
+        self._require_functional_permissions(actor, ("project:progress:view",))
+        can_view_all = self._has_functional_permission(
+            actor, "project:progress:view-all"
+        )
+        projects = self.repository.list_accessible_projects(
+            actor.user_id, include_all=can_view_all
+        )
+        items = [self._progress_item(project, actor) for project in projects]
+        overall = round(
+            sum(item["actual_percent"] for item in items) / len(items)
+        ) if items else 0
+        planned = round(
+            sum(item["planned_percent"] for item in items) / len(items)
+        ) if items else 0
+        return {
+            "summary": {
+                "project_count": len(items),
+                "system_count": len({item["application_id"] for item in items}),
+                "overall_percent": overall,
+                "planned_percent": planned,
+                "delayed_projects": sum(item["risk_status"] == "DELAYED" for item in items),
+            },
+            "projects": items,
+            "can_view_all_projects": can_view_all,
+        }
+
+    def update_milestone(
+        self,
+        project_id: int,
+        milestone_id: int,
+        command: UpdateMilestoneCommand,
+        actor: ProjectActor,
+    ) -> dict:
+        project = self._require_project(project_id)
+        self._require_project_permission(project, actor, "project:update")
+        if project.project_status in {"SUSPENDED", "ARCHIVED"}:
+            raise ProjectPermissionDenied("暂停或归档项目不能更新进度")
+        if not 0 <= command.actual_percent <= 100:
+            raise ProjectValidationError("实际完成率必须在 0 到 100 之间")
+        milestone_status = command.status.strip().upper()
+        if milestone_status not in self.MILESTONE_STATUSES:
+            raise ProjectValidationError(f"不支持的里程碑状态：{milestone_status}")
+        if command.actual_percent == 100:
+            milestone_status = "COMPLETED"
+        elif milestone_status == "COMPLETED":
+            raise ProjectValidationError("完成状态的实际完成率必须为 100")
+        milestone = self.repository.get_milestone(project.id, milestone_id)
+        if milestone is None:
+            raise ProjectNotFound(f"项目里程碑不存在：{milestone_id}")
+        before = {
+            "actual_percent": milestone.actual_percent,
+            "status": milestone.status,
+        }
+        milestone.actual_percent = command.actual_percent
+        milestone.status = milestone_status
+        self.repository.add_audit(
+            "PROJECT_MILESTONE",
+            milestone.id,
+            "UPDATE",
+            actor.user_id,
+            {
+                "project_id": project.id,
+                "before": before,
+                "after": {
+                    "actual_percent": milestone.actual_percent,
+                    "status": milestone.status,
+                },
+            },
+        )
+        self.repository.commit()
+        self.repository.expire_all()
+        return self._progress_item(self._require_project(project.id), actor)
 
     def get_project(self, project_id: int, actor: ProjectActor) -> Project:
         project = self._require_project(project_id)
@@ -641,6 +725,56 @@ class ProjectService:
                     (item for item in project.members if item.is_active),
                     key=lambda item: (item.role.role_code, item.membership.user.username),
                 )
+            ],
+        }
+
+    def _progress_item(self, project: Project, actor: ProjectActor) -> dict:
+        milestones = sorted(
+            project.milestones, key=lambda item: (item.due_date or date.max, item.id)
+        )
+        total_weight = sum(item.weight for item in milestones) or 1
+        planned = round(
+            sum(item.weight * item.planned_percent for item in milestones)
+            / total_weight
+        )
+        actual = round(
+            sum(item.weight * item.actual_percent for item in milestones)
+            / total_weight
+        )
+        try:
+            self._require_project_permission(project, actor, "project:update")
+            can_update = project.project_status not in {"SUSPENDED", "ARCHIVED"}
+        except ProjectPermissionDenied:
+            can_update = False
+        return {
+            "project_id": project.id,
+            "application_id": project.application_id,
+            "application_code": project.application.application_code,
+            "application_name": project.application.application_name,
+            "project_code": project.project_code,
+            "project_name": project.project_name,
+            "project_status": project.project_status,
+            "planned_percent": planned,
+            "actual_percent": actual,
+            "variance_percent": actual - planned,
+            "risk_status": (
+                "DELAYED"
+                if any(item.status == "DELAYED" for item in milestones)
+                else "ON_TRACK"
+            ),
+            "can_update": can_update,
+            "milestones": [
+                {
+                    "id": item.id,
+                    "milestone_code": item.milestone_code,
+                    "milestone_name": item.milestone_name,
+                    "weight": item.weight,
+                    "planned_percent": item.planned_percent,
+                    "actual_percent": item.actual_percent,
+                    "status": item.status,
+                    "due_date": item.due_date,
+                }
+                for item in milestones
             ],
         }
 

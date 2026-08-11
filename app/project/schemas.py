@@ -66,6 +66,39 @@ class LifelineStructureResponse(BaseModel):
     capabilities: dict[str, bool]
 
 
+class ProjectMilestoneResponse(BaseModel):
+    id: int
+    milestone_code: str
+    milestone_name: str
+    weight: int
+    planned_percent: int
+    actual_percent: int
+    status: str
+    due_date: date | None
+
+
+class ProjectProgressResponse(BaseModel):
+    project_id: int
+    application_id: int
+    application_code: str
+    application_name: str
+    project_code: str
+    project_name: str
+    project_status: str
+    planned_percent: int
+    actual_percent: int
+    variance_percent: int
+    risk_status: str
+    can_update: bool
+    milestones: list[ProjectMilestoneResponse]
+
+
+class ProjectProgressDashboardResponse(BaseModel):
+    summary: dict[str, int]
+    projects: list[ProjectProgressResponse]
+    can_view_all_projects: bool
+
+
 class CreateProjectRequest(BaseModel):
     application_id: int = Field(gt=0)
     project_code: str = Field(min_length=2, max_length=80)
@@ -79,6 +112,11 @@ class UpdateProjectRequest(BaseModel):
     project_status: str = Field(min_length=1, max_length=40)
     start_date: date | None = None
     end_date: date | None = None
+
+
+class UpdateMilestoneRequest(BaseModel):
+    actual_percent: int = Field(ge=0, le=100)
+    status: str = Field(min_length=1, max_length=40)
 
 
 class ProjectOrganizationConfigurationRequest(BaseModel):
