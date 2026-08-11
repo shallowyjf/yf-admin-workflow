@@ -11,9 +11,17 @@ from app.iam.authorization import PermissionService
 from app.iam.repository import IAMRepository
 
 from .repository import AuthRepository
-from .schemas import ActiveOrganizationRequest, LoginRequest, MeResponse
+from .schemas import (
+    ActiveApplicationRequest,
+    ActiveOrganizationRequest,
+    ActiveProjectRequest,
+    LoginRequest,
+    MeResponse,
+)
 from .service import (
+    ActiveApplicationDenied,
     ActiveOrganizationDenied,
+    ActiveProjectDenied,
     AuthenticationError,
     AuthProfile,
     AuthService,
@@ -120,6 +128,40 @@ def switch_active_organization(
     try:
         profile = service.switch_active_organization(context, command.org_id)
     except ActiveOrganizationDenied as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(error),
+        ) from error
+    return _profile_response(profile)
+
+
+@router.post("/active-application", response_model=MeResponse)
+def switch_active_application(
+    command: ActiveApplicationRequest,
+    context: Annotated[RequestContext, Depends(get_request_context)],
+    service: Annotated[AuthService, Depends(get_auth_service)],
+) -> MeResponse:
+    try:
+        profile = service.switch_active_application(
+            context, command.application_id
+        )
+    except ActiveApplicationDenied as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(error),
+        ) from error
+    return _profile_response(profile)
+
+
+@router.post("/active-project", response_model=MeResponse)
+def switch_active_project(
+    command: ActiveProjectRequest,
+    context: Annotated[RequestContext, Depends(get_request_context)],
+    service: Annotated[AuthService, Depends(get_auth_service)],
+) -> MeResponse:
+    try:
+        profile = service.switch_active_project(context, command.project_id)
+    except ActiveProjectDenied as error:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=str(error),

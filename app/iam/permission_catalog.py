@@ -38,6 +38,7 @@ PERMISSIONS = (
     ("project:member:manage", "配置项目成员与角色", "PROJECT"),
     ("project:progress:view", "查看项目进度", "PROJECT"),
     ("project:progress:view-all", "查看全部项目汇总进度", "PROJECT"),
+    ("project:authorization:explain", "解释项目授权链", "PROJECT"),
     ("workorder:view", "查看工单", "WORKORDER"),
     ("workorder:create", "创建工单", "WORKORDER"),
     ("workorder:dispatch", "派单", "WORKORDER"),

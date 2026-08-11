@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import parse_qs, quote
@@ -15,7 +16,9 @@ from sqlalchemy.orm import Session
 from app.auth.repository import AuthRepository
 from app.auth.router import get_auth_service
 from app.auth.service import (
+    ActiveApplicationDenied,
     ActiveOrganizationDenied,
+    ActiveProjectDenied,
     AuthenticationError,
     AuthProfile,
     AuthService,
@@ -62,7 +65,18 @@ from app.notification.service import NotificationNotFound, NotificationService
 from app.operation.repository import SavedViewRepository
 from app.operation.service import SavedViewError, SavedViewService
 from app.project.repository import ProjectRepository
-from app.project.service import ProjectActor, ProjectPermissionDenied, ProjectService
+from app.project.service import (
+    CreateProjectCommand,
+    ProjectActor,
+    ProjectConflict,
+    ProjectMemberConfiguration,
+    ProjectNotFound,
+    ProjectOrganizationConfiguration,
+    ProjectPermissionDenied,
+    ProjectService,
+    ProjectValidationError,
+    UpdateProjectCommand,
+)
 from app.workflow.domain import TaskAccessDenied, WorkflowError
 from app.workflow.factory import build_workflow_service
 from app.workflow.repository import WorkflowRepository
@@ -208,19 +222,25 @@ def _friendly_error(
             PageAccessDenied,
             TaskAccessDenied,
             WorkOrderPermissionDenied,
+            ProjectPermissionDenied,
         ),
     ):
         code = status.HTTP_403_FORBIDDEN
         title = "没有访问权限"
     elif isinstance(
         error,
-        (IAMEntityNotFound, NotificationNotFound, WorkOrderNotFound),
+        (IAMEntityNotFound, NotificationNotFound, ProjectNotFound, WorkOrderNotFound),
     ):
         code = status.HTTP_404_NOT_FOUND
         title = "没有找到工单"
     elif isinstance(
         error,
-        (IAMAdministrationValidationError, ValueError, WorkOrderValidationError),
+        (
+            IAMAdministrationValidationError,
+            ProjectValidationError,
+            ValueError,
+            WorkOrderValidationError,
+        ),
     ):
         code = status.HTTP_422_UNPROCESSABLE_CONTENT
         title = "提交内容不完整"
@@ -286,6 +306,13 @@ def lifeline_page(
         )
     except ProjectPermissionDenied as error:
         raise PageAccessDenied(str(error)) from error
+    structure.update(
+        {
+            "organizations": dashboard_service.iam_service.list_organizations(),
+            "users": dashboard_service.iam_service.list_users(),
+            "roles": dashboard_service.iam_service.list_roles(),
+        }
+    )
     return _page(
         request,
         dashboard_service,
@@ -295,6 +322,157 @@ def lifeline_page(
         "lifeline",
         structure,
     )
+
+
+def _optional_date(value: str | None) -> date | None:
+    return date.fromisoformat(value) if value else None
+
+
+@router.post("/ui/projects", include_in_schema=False, response_model=None)
+async def create_project_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    dashboard_service: Annotated[DashboardService, Depends(get_dashboard_service)],
+    project_service: Annotated[ProjectService, Depends(get_page_project_service)],
+) -> HTMLResponse | RedirectResponse:
+    values = await _form(request)
+    try:
+        project_service.create(
+            CreateProjectCommand(
+                application_id=int(values.get("application_id", "0")),
+                project_code=values.get("project_code", ""),
+                project_name=values.get("project_name", ""),
+                start_date=_optional_date(values.get("start_date")),
+                end_date=_optional_date(values.get("end_date")),
+            ),
+            ProjectActor(
+                identity.context.current_user_id,
+                identity.context.active_org_id,
+            ),
+        )
+    except (ProjectPermissionDenied, ProjectValidationError, ProjectConflict, ValueError) as error:
+        return _friendly_error(request, dashboard_service, identity, error)
+    return RedirectResponse("/lifeline", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post(
+    "/ui/projects/{project_id}/update",
+    include_in_schema=False,
+    response_model=None,
+)
+async def update_project_page(
+    request: Request,
+    project_id: int,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    dashboard_service: Annotated[DashboardService, Depends(get_dashboard_service)],
+    project_service: Annotated[ProjectService, Depends(get_page_project_service)],
+) -> HTMLResponse | RedirectResponse:
+    values = await _form(request)
+    try:
+        project_service.update(
+            project_id,
+            UpdateProjectCommand(
+                project_name=values.get("project_name", ""),
+                project_status=values.get("project_status", ""),
+                start_date=_optional_date(values.get("start_date")),
+                end_date=_optional_date(values.get("end_date")),
+            ),
+            ProjectActor(
+                identity.context.current_user_id,
+                identity.context.active_org_id,
+            ),
+        )
+    except (
+        ProjectPermissionDenied,
+        ProjectNotFound,
+        ProjectValidationError,
+        ValueError,
+    ) as error:
+        return _friendly_error(request, dashboard_service, identity, error)
+    return RedirectResponse("/lifeline", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post(
+    "/ui/projects/{project_id}/organizations",
+    include_in_schema=False,
+    response_model=None,
+)
+async def replace_project_organizations_page(
+    request: Request,
+    project_id: int,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    dashboard_service: Annotated[DashboardService, Depends(get_dashboard_service)],
+    project_service: Annotated[ProjectService, Depends(get_page_project_service)],
+) -> HTMLResponse | RedirectResponse:
+    values = await _form_lists(request)
+    selected_org_ids = values.get("party_org_id", [])
+    lead_org_id = values.get("lead_org_id", [""])[-1]
+    try:
+        configurations = tuple(
+            ProjectOrganizationConfiguration(
+                org_id=int(org_id),
+                party_type=values.get(f"party_type_{org_id}", [""])[-1],
+                is_lead=org_id == lead_org_id,
+            )
+            for org_id in selected_org_ids
+        )
+        project_service.replace_organizations(
+            project_id,
+            configurations,
+            ProjectActor(
+                identity.context.current_user_id,
+                identity.context.active_org_id,
+            ),
+        )
+    except (
+        ProjectConflict,
+        ProjectNotFound,
+        ProjectPermissionDenied,
+        ProjectValidationError,
+        ValueError,
+    ) as error:
+        return _friendly_error(request, dashboard_service, identity, error)
+    return RedirectResponse("/lifeline", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post(
+    "/ui/projects/{project_id}/members",
+    include_in_schema=False,
+    response_model=None,
+)
+async def replace_project_members_page(
+    request: Request,
+    project_id: int,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    dashboard_service: Annotated[DashboardService, Depends(get_dashboard_service)],
+    project_service: Annotated[ProjectService, Depends(get_page_project_service)],
+) -> HTMLResponse | RedirectResponse:
+    values = await _form_lists(request)
+    selected_membership_ids = values.get("member_user_org_id", [])
+    try:
+        configurations = tuple(
+            ProjectMemberConfiguration(
+                user_org_id=int(user_org_id),
+                role_code=values.get(f"member_role_{user_org_id}", [""])[-1],
+            )
+            for user_org_id in selected_membership_ids
+        )
+        project_service.replace_members(
+            project_id,
+            configurations,
+            ProjectActor(
+                identity.context.current_user_id,
+                identity.context.active_org_id,
+            ),
+        )
+    except (
+        ProjectNotFound,
+        ProjectPermissionDenied,
+        ProjectValidationError,
+        ValueError,
+    ) as error:
+        return _friendly_error(request, dashboard_service, identity, error)
+    return RedirectResponse("/lifeline", status_code=status.HTTP_303_SEE_OTHER)
 
 
 def _iam_page(
@@ -609,6 +787,42 @@ async def active_organization_page(
         auth_service.switch_active_organization(identity.context, int(values["org_id"]))
     except (ActiveOrganizationDenied, KeyError, ValueError) as error:
         raise PageAccessDenied("无法切换到该组织") from error
+    return RedirectResponse(
+        values.get("next", "/dashboard"), status_code=status.HTTP_303_SEE_OTHER
+    )
+
+
+@router.post("/active-application", include_in_schema=False)
+async def active_application_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+) -> RedirectResponse:
+    values = await _form(request)
+    try:
+        auth_service.switch_active_application(
+            identity.context, int(values["application_id"])
+        )
+    except (ActiveApplicationDenied, KeyError, ValueError) as error:
+        raise PageAccessDenied("无法切换到该生命线系统") from error
+    return RedirectResponse(
+        values.get("next", "/dashboard"), status_code=status.HTTP_303_SEE_OTHER
+    )
+
+
+@router.post("/active-project", include_in_schema=False)
+async def active_project_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+) -> RedirectResponse:
+    values = await _form(request)
+    try:
+        auth_service.switch_active_project(
+            identity.context, int(values["project_id"])
+        )
+    except (ActiveProjectDenied, KeyError, ValueError) as error:
+        raise PageAccessDenied("无法切换到该工程项目") from error
     return RedirectResponse(
         values.get("next", "/dashboard"), status_code=status.HTTP_303_SEE_OTHER
     )

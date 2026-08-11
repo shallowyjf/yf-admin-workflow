@@ -26,6 +26,7 @@ def test_shared_declarative_base_contains_current_tables() -> None:
         "sys_role_data_scope",
         "sys_role_permission",
         "sys_user",
+        "sys_user_application",
         "sys_user_org",
         "sys_user_org_position",
         "sys_user_org_role",

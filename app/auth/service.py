@@ -18,12 +18,22 @@ class ActiveOrganizationDenied(Exception):
     """Raised when an active organization is not a valid membership."""
 
 
+class ActiveApplicationDenied(Exception):
+    """Raised when a system is not available to the current user."""
+
+
+class ActiveProjectDenied(Exception):
+    """Raised when a project is not available to the current user."""
+
+
 @dataclass(frozen=True)
 class RequestContext:
     current_user_id: int
     tenant_id: int
     active_org_id: int
     session_id: int
+    active_application_id: int | None = None
+    active_project_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -35,6 +45,22 @@ class OrganizationContext:
 
 
 @dataclass(frozen=True)
+class ApplicationContext:
+    id: int
+    application_code: str
+    application_name: str
+
+
+@dataclass(frozen=True)
+class ProjectContext:
+    id: int
+    application_id: int
+    project_code: str
+    project_name: str
+    project_status: str
+
+
+@dataclass(frozen=True)
 class AuthProfile:
     user_id: int
     tenant_id: int
@@ -43,7 +69,11 @@ class AuthProfile:
     username: str
     display_name: str
     active_org_id: int
+    active_application_id: int | None
+    active_project_id: int | None
     organizations: list[OrganizationContext]
+    applications: list[ApplicationContext]
+    projects: list[ProjectContext]
     role_codes: list[str]
     permission_codes: list[str]
 
@@ -93,10 +123,25 @@ class AuthService:
             raise ActiveOrganizationDenied("user has no active organization")
 
         token = new_session_token()
+        active_org_id = memberships[0].org_id
+        applications, projects = self._available_contexts(
+            user.id, tenant.id, active_org_id
+        )
+        active_application_id = applications[0].id if applications else None
+        active_project = next(
+            (
+                project
+                for project in projects
+                if project.application_id == active_application_id
+            ),
+            None,
+        )
         auth_session = AuthSession(
             tenant_id=tenant.id,
             user_id=user.id,
-            active_org_id=memberships[0].org_id,
+            active_org_id=active_org_id,
+            active_application_id=active_application_id,
+            active_project_id=active_project.id if active_project else None,
             token_hash=session_token_hash(token),
             expires_at=self._now() + timedelta(hours=self.session_hours),
         )
@@ -107,6 +152,8 @@ class AuthService:
             tenant.id,
             auth_session.active_org_id,
             auth_session.id,
+            auth_session.active_application_id,
+            auth_session.active_project_id,
         )
         return LoginResult(token, self.profile(context))
 
@@ -125,12 +172,16 @@ class AuthService:
             auth_session.tenant_id,
         ) is None:
             raise AuthenticationError("active organization is no longer available")
-        return RequestContext(
+        context = RequestContext(
             auth_session.user_id,
             auth_session.tenant_id,
             auth_session.active_org_id,
             auth_session.id,
+            auth_session.active_application_id,
+            auth_session.active_project_id,
         )
+        self._require_active_resource_context(context)
+        return context
 
     def logout(self, context: RequestContext) -> None:
         auth_session = self._session_for_context(context)
@@ -150,6 +201,21 @@ class AuthService:
         ) is None:
             raise ActiveOrganizationDenied("user does not belong to target organization")
         auth_session.active_org_id = org_id
+        applications, projects = self._available_contexts(
+            context.current_user_id,
+            context.tenant_id,
+            org_id,
+        )
+        auth_session.active_application_id = applications[0].id if applications else None
+        active_project = next(
+            (
+                project
+                for project in projects
+                if project.application_id == auth_session.active_application_id
+            ),
+            None,
+        )
+        auth_session.active_project_id = active_project.id if active_project else None
         self.repository.save(auth_session)
         return self.profile(
             RequestContext(
@@ -157,6 +223,71 @@ class AuthService:
                 context.tenant_id,
                 org_id,
                 context.session_id,
+                auth_session.active_application_id,
+                auth_session.active_project_id,
+            )
+        )
+
+    def switch_active_application(
+        self,
+        context: RequestContext,
+        application_id: int,
+    ) -> AuthProfile:
+        auth_session = self._session_for_context(context)
+        applications, projects = self._available_contexts(
+            context.current_user_id,
+            context.tenant_id,
+            context.active_org_id,
+        )
+        if application_id not in {application.id for application in applications}:
+            raise ActiveApplicationDenied("system entrance is not available")
+        auth_session.active_application_id = application_id
+        active_project = next(
+            (
+                project
+                for project in projects
+                if project.application_id == application_id
+            ),
+            None,
+        )
+        auth_session.active_project_id = active_project.id if active_project else None
+        self.repository.save(auth_session)
+        return self.profile(
+            RequestContext(
+                context.current_user_id,
+                context.tenant_id,
+                context.active_org_id,
+                context.session_id,
+                application_id,
+                auth_session.active_project_id,
+            )
+        )
+
+    def switch_active_project(
+        self,
+        context: RequestContext,
+        project_id: int,
+    ) -> AuthProfile:
+        auth_session = self._session_for_context(context)
+        _, projects = self._available_contexts(
+            context.current_user_id,
+            context.tenant_id,
+            context.active_org_id,
+        )
+        project = next((item for item in projects if item.id == project_id), None)
+        if project is None:
+            raise ActiveProjectDenied("project is not available")
+        auth_session.active_application_id = project.application_id
+        auth_session.active_project_id = project.id
+        self.repository.save(auth_session)
+        return self.profile(
+            RequestContext(
+                context.current_user_id,
+                context.tenant_id,
+                context.active_org_id,
+                context.session_id,
+                project.application_id,
+                project.id,
             )
         )
 
@@ -191,6 +322,11 @@ class AuthService:
                 context.active_org_id,
             )
         )
+        applications, projects = self._available_contexts(
+            user.id,
+            context.tenant_id,
+            context.active_org_id,
+        )
         return AuthProfile(
             user_id=user.id,
             tenant_id=auth_session.tenant_id,
@@ -199,6 +335,8 @@ class AuthService:
             username=user.username,
             display_name=user.display_name,
             active_org_id=context.active_org_id,
+            active_application_id=context.active_application_id,
+            active_project_id=context.active_project_id,
             organizations=[
                 OrganizationContext(
                     id=membership.organization.id,
@@ -207,6 +345,24 @@ class AuthService:
                     is_primary=membership.is_primary,
                 )
                 for membership in memberships
+            ],
+            applications=[
+                ApplicationContext(
+                    id=application.id,
+                    application_code=application.application_code,
+                    application_name=application.application_name,
+                )
+                for application in applications
+            ],
+            projects=[
+                ProjectContext(
+                    id=project.id,
+                    application_id=project.application_id,
+                    project_code=project.project_code,
+                    project_name=project.project_name,
+                    project_status=project.project_status,
+                )
+                for project in projects
             ],
             role_codes=role_codes,
             permission_codes=permission_codes,
@@ -231,9 +387,55 @@ class AuthService:
             or auth_session.user_id != context.current_user_id
             or auth_session.tenant_id != context.tenant_id
             or auth_session.active_org_id != context.active_org_id
+            or auth_session.active_application_id != context.active_application_id
+            or auth_session.active_project_id != context.active_project_id
         ):
             raise AuthenticationError("session context is invalid or expired")
         return auth_session
+
+    def _available_contexts(self, user_id: int, tenant_id: int, active_org_id: int):
+        if not self.permission_service.has_permission(
+            user_id, "system:application:view", active_org_id
+        ):
+            return [], []
+        applications = self.repository.list_user_applications(user_id, tenant_id)
+        if not self.permission_service.has_permission(
+            user_id, "project:view", active_org_id
+        ):
+            return applications, []
+        include_all = self.permission_service.has_permission(
+            user_id, "project:progress:view-all", active_org_id
+        )
+        projects = self.repository.list_accessible_projects(
+            user_id,
+            tenant_id,
+            include_all=include_all,
+        )
+        return applications, projects
+
+    def _require_active_resource_context(self, context: RequestContext) -> None:
+        applications, projects = self._available_contexts(
+            context.current_user_id,
+            context.tenant_id,
+            context.active_org_id,
+        )
+        application_ids = {application.id for application in applications}
+        if (
+            context.active_application_id is not None
+            and context.active_application_id not in application_ids
+        ):
+            raise AuthenticationError("active system is no longer available")
+        if context.active_project_id is None:
+            return
+        project = next(
+            (item for item in projects if item.id == context.active_project_id),
+            None,
+        )
+        if (
+            project is None
+            or project.application_id != context.active_application_id
+        ):
+            raise AuthenticationError("active project is no longer available")
 
     @staticmethod
     def _now() -> datetime:

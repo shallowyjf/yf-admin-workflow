@@ -7,10 +7,20 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.iam.models import (
     Organization,
+    Permission,
+    Role,
+    RolePermission,
     Tenant,
     User,
     UserOrganization,
     UserOrganizationRole,
+)
+from app.project.models import (
+    Application,
+    Project,
+    ProjectMember,
+    TenantApplication,
+    UserApplicationAccess,
 )
 
 from .models import AuthSession
@@ -88,6 +98,75 @@ class AuthRepository:
                 joinedload(AuthSession.user),
                 joinedload(AuthSession.tenant),
                 joinedload(AuthSession.active_organization),
+            )
+        )
+
+    def list_user_applications(
+        self, user_id: int, tenant_id: int
+    ) -> list[Application]:
+        return list(
+            self.session.scalars(
+                select(Application)
+                .join(TenantApplication)
+                .join(UserApplicationAccess)
+                .where(
+                    TenantApplication.tenant_id == tenant_id,
+                    TenantApplication.is_active.is_(True),
+                    UserApplicationAccess.user_id == user_id,
+                    UserApplicationAccess.is_active.is_(True),
+                    Application.is_active.is_(True),
+                )
+                .order_by(Application.id)
+            )
+        )
+
+    def list_accessible_projects(
+        self,
+        user_id: int,
+        tenant_id: int,
+        *,
+        include_all: bool,
+    ) -> list[Project]:
+        application_ids = {
+            application.id
+            for application in self.list_user_applications(user_id, tenant_id)
+        }
+        if not application_ids:
+            return []
+        statement = (
+            select(Project)
+            .where(
+                Project.tenant_id == tenant_id,
+                Project.application_id.in_(application_ids),
+            )
+            .options(joinedload(Project.application))
+            .order_by(Project.application_id, Project.id)
+        )
+        if include_all:
+            return list(self.session.scalars(statement))
+        return list(
+            self.session.scalars(
+                statement
+                .join(ProjectMember)
+                .join(UserOrganization)
+                .join(Organization, Organization.id == UserOrganization.org_id)
+                .join(User, User.id == UserOrganization.user_id)
+                .join(Role, Role.id == ProjectMember.role_id)
+                .join(RolePermission, RolePermission.role_id == Role.id)
+                .join(Permission, Permission.id == RolePermission.permission_id)
+                .where(
+                    ProjectMember.is_active.is_(True),
+                    UserOrganization.user_id == user_id,
+                    UserOrganization.is_active.is_(True),
+                    Organization.tenant_id == tenant_id,
+                    Organization.is_active.is_(True),
+                    User.tenant_id == tenant_id,
+                    User.is_active.is_(True),
+                    Role.tenant_id == tenant_id,
+                    Role.is_active.is_(True),
+                    Permission.permission_code == "project:view",
+                )
+                .distinct()
             )
         )
 

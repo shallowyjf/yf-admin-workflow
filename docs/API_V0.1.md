@@ -8,6 +8,13 @@
 | Auth | `POST /auth/login`、`POST /auth/logout` | 登录、退出 |
 | Auth | `GET /auth/me`、`POST /auth/active-org` | 当前用户、有效权限和活动组织切换 |
 | City Lifeline | `GET /api/lifeline/structure` | 当前账号可见的系统、项目、参与组织、成员角色与默认权限矩阵 |
+| City Lifeline | `GET/POST /api/lifeline/projects` | 可见项目列表、新建项目 |
+| City Lifeline | `GET/PUT/DELETE /api/lifeline/projects/{id}` | 项目详情、编辑、仅空项目安全删除 |
+| City Lifeline | `PUT /api/lifeline/projects/{id}/organizations` | 原子替换项目参与组织与牵头方 |
+| City Lifeline | `PUT /api/lifeline/projects/{id}/members` | 原子替换项目成员与项目角色 |
+| City Lifeline | `GET /api/lifeline/projects/{id}/authorization-explain` | 解释用户项目授权链 |
+| City Lifeline | `PUT /api/lifeline/users/{id}/applications` | 配置用户生命线系统入口 |
+| Auth | `POST /auth/active-application`、`POST /auth/active-project` | 切换活动生命线系统和工程项目 |
 | Organization | `GET/POST /api/orgs` | 列表、新增 |
 | Organization | `GET /api/orgs/tree` | 组织树 |
 | Organization | `GET/PUT/DELETE /api/orgs/{id}` | 详情、编辑、安全删除 |

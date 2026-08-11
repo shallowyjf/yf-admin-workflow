@@ -19,6 +19,7 @@ from app.project.models import (
     ProjectMember,
     ProjectOrganization,
     TenantApplication,
+    UserApplicationAccess,
 )
 from app.project.repository import ProjectRepository
 from app.project.seed import ProjectSeedSummary, seed_projects
@@ -65,7 +66,11 @@ def test_project_seed_is_idempotent_and_builds_default_structure(db_session) -> 
     assert db_session.scalar(select(func.count()).select_from(TenantApplication)) == 5
     assert db_session.scalar(select(func.count()).select_from(Project)) == 5
     assert db_session.scalar(select(func.count()).select_from(ProjectOrganization)) == 20
-    assert db_session.scalar(select(func.count()).select_from(ProjectMember)) == 31
+    assert db_session.scalar(select(func.count()).select_from(ProjectMember)) == 36
+    assert (
+        db_session.scalar(select(func.count()).select_from(UserApplicationAccess))
+        == 36
+    )
 
 
 def test_admin_can_view_all_lifeline_systems_projects_and_roles(

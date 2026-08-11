@@ -17,7 +17,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.db.mixins import IdTimestampMixin
-from app.iam.models import Organization, Role, Tenant, UserOrganization
+from app.iam.models import Organization, Role, Tenant, User, UserOrganization
 
 
 class Application(IdTimestampMixin, Base):
@@ -56,6 +56,33 @@ class TenantApplication(IdTimestampMixin, Base):
 
     tenant: Mapped[Tenant] = relationship()
     application: Mapped[Application] = relationship()
+
+
+class UserApplicationAccess(IdTimestampMixin, Base):
+    """Explicit per-user entrance grant to a tenant's lifeline system."""
+
+    __tablename__ = "sys_user_application"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_application_id",
+            "user_id",
+            name="uq_user_application_subscription_user",
+        ),
+        Index("ix_user_application_user_id", "user_id"),
+    )
+
+    tenant_application_id: Mapped[int] = mapped_column(
+        ForeignKey("sys_tenant_application.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("sys_user.id", ondelete="CASCADE"), nullable=False
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("1")
+    )
+
+    tenant_application: Mapped[TenantApplication] = relationship()
+    user: Mapped[User] = relationship()
 
 
 class Project(IdTimestampMixin, Base):

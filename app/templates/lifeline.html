@@ -5,6 +5,20 @@
   <span class="result-count">{{ '全部项目视图' if can_view_all_projects else '本人参与项目' }}</span>
 </section>
 
+{% if capabilities.create %}
+<section class="panel form-panel">
+  <div class="panel-head"><div><p class="eyebrow">NEW PROJECT</p><h2>新增工程项目</h2></div></div>
+  <form method="post" action="/ui/projects" class="form-grid">
+    <label>生命线系统<select name="application_id" required>{% for application in applications %}<option value="{{ application.id }}">{{ application.application_name }}</option>{% endfor %}</select></label>
+    <label>项目编码<input name="project_code" placeholder="例如 WS_PHASE_2" required></label>
+    <label>项目名称<input name="project_name" required></label>
+    <label>开始日期<input name="start_date" type="date"></label>
+    <label>结束日期<input name="end_date" type="date"></label>
+    <div class="form-actions"><button class="button primary" type="submit">创建项目</button></div>
+  </form>
+</section>
+{% endif %}
+
 <section class="stats-grid" aria-label="生命线系统统计">
   {% for application in applications %}
   <article class="stat-card{% if loop.first %} accent{% endif %}"><span>{{ application.domain_type }}</span><strong>{{ application.projects|length }}</strong><small>{{ application.application_name }}</small></article>
@@ -21,6 +35,38 @@
       <div><p class="meta-label">参与组织</p><div class="tag-list">{% for org in project.organizations %}<span class="tag"><b>{{ org.party_type }}</b> · {{ org.org_name }}{% if org.is_lead %} · 牵头{% endif %}</span>{% endfor %}</div></div>
       <div><p class="meta-label">项目成员与角色</p><div class="tag-list">{% for member in project.members %}<span class="tag"><b>{{ member.role_name }}</b> · {{ member.display_name }} / {{ member.org_name }}</span>{% endfor %}</div></div>
     </div>
+    {% if capabilities.update or capabilities.organizations or capabilities.members %}
+    <details>
+      <summary>项目授权配置</summary>
+      {% if capabilities.update %}
+      <form method="post" action="/ui/projects/{{ project.id }}/update" class="form-grid">
+        <label>项目名称<input name="project_name" value="{{ project.project_name }}" required></label>
+        <label>状态<select name="project_status">{% for project_status in ['PLANNED','ACTIVE','SUSPENDED','ARCHIVED'] %}<option value="{{ project_status }}"{% if project.project_status == project_status %} selected{% endif %}>{{ project_status }}</option>{% endfor %}</select></label>
+        <label>开始日期<input name="start_date" type="date" value="{{ project.start_date or '' }}"></label>
+        <label>结束日期<input name="end_date" type="date" value="{{ project.end_date or '' }}"></label>
+        <div class="form-actions"><button class="button primary" type="submit">保存项目</button></div>
+      </form>
+      {% endif %}
+      {% if capabilities.organizations %}
+      <form method="post" action="/ui/projects/{{ project.id }}/organizations" class="stack-list">
+        <p class="meta-label">参与组织（必须且只能有一个甲方牵头组织）</p>
+        {% for org in organizations %}{% set configured = project.organizations|selectattr('org_id', 'equalto', org.id)|list %}
+        <div class="stack-item"><label class="check-label"><input type="checkbox" name="party_org_id" value="{{ org.id }}"{% if configured %} checked{% endif %}>{{ org.org_name }}</label><select name="party_type_{{ org.id }}">{% for party_type in ['OWNER','REGULATOR','CONTRACTOR','PLATFORM'] %}<option value="{{ party_type }}"{% if configured and configured[0].party_type == party_type %} selected{% endif %}>{{ party_type }}</option>{% endfor %}</select><label class="check-label"><input type="radio" name="lead_org_id" value="{{ org.id }}"{% if configured and configured[0].is_lead %} checked{% endif %}>牵头</label></div>
+        {% endfor %}
+        <div class="form-actions"><button class="button primary" type="submit">保存参与组织</button></div>
+      </form>
+      {% endif %}
+      {% if capabilities.members %}
+      <form method="post" action="/ui/projects/{{ project.id }}/members" class="stack-list">
+        <p class="meta-label">项目成员与项目角色</p>
+        {% for user in users %}{% for membership in user.memberships if membership.is_active %}{% set configured = project.members|selectattr('user_org_id', 'equalto', membership.id)|list %}
+        <div class="stack-item"><label class="check-label"><input type="checkbox" name="member_user_org_id" value="{{ membership.id }}"{% if configured %} checked{% endif %}>{{ user.display_name }} / {{ membership.organization.org_name }}</label><select name="member_role_{{ membership.id }}">{% for role in roles if role.is_active %}<option value="{{ role.role_code }}"{% if configured and configured[0].role_code == role.role_code %} selected{% endif %}>{{ role.role_name }}</option>{% endfor %}</select></div>
+        {% endfor %}{% endfor %}
+        <div class="form-actions"><button class="button primary" type="submit">保存项目成员</button></div>
+      </form>
+      {% endif %}
+    </details>
+    {% endif %}
   </article>
   {% else %}<div class="empty">当前账号没有该系统下的项目成员资格</div>{% endfor %}
 </section>

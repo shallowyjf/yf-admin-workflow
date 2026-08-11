@@ -31,6 +31,12 @@ class AuthSession(IdTimestampMixin, Base):
         ForeignKey("sys_org.id", ondelete="RESTRICT"),
         nullable=False,
     )
+    active_application_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sys_application.id", ondelete="SET NULL")
+    )
+    active_project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pm_project.id", ondelete="SET NULL")
+    )
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime)

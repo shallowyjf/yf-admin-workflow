@@ -9,7 +9,7 @@ from .repository import HealthRepository
 class HealthStatus:
     status: str
     database: str
-    iteration: str = "I20"
+    iteration: str = "I21"
     version: str = "0.1.0"
 
 

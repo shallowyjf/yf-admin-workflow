@@ -14,6 +14,7 @@ from .models import (
     ProjectMember,
     ProjectOrganization,
     TenantApplication,
+    UserApplicationAccess,
 )
 from .repository import ProjectRepository
 
@@ -71,12 +72,24 @@ PROJECT_PARTIES = (
 )
 
 COMMON_MEMBERS = (
+    ("admin", "GROUP", "SYSTEM_ADMIN"),
     ("owner_leader", "GROUP", "OWNER_LEADER"),
     ("wangwu", "DISPATCH_CENTER", "DISPATCHER"),
     ("regulator", "REGULATOR", "REVIEWER"),
     ("zhangsan", "PIPE_OPERATION", "WORKORDER_MANAGER"),
     ("platform_ops", "PLATFORM", "PLATFORM_OPERATOR"),
 )
+
+USER_APPLICATIONS = {
+    "admin": tuple(code for code, _, _ in APPLICATIONS),
+    "owner_leader": tuple(code for code, _, _ in APPLICATIONS),
+    "wangwu": tuple(code for code, _, _ in APPLICATIONS),
+    "regulator": tuple(code for code, _, _ in APPLICATIONS),
+    "zhangsan": tuple(code for code, _, _ in APPLICATIONS),
+    "platform_ops": tuple(code for code, _, _ in APPLICATIONS),
+    "lisi": ("WATER_SUPPLY", "DRAINAGE", "HEATING"),
+    "zhaoliu": ("WATER_SUPPLY", "GAS", "ROAD"),
+}
 
 PROJECT_WORKERS = {
     "WS_NETWORK_RENEWAL": ("lisi", "zhaoliu"),
@@ -95,6 +108,10 @@ class ProjectSeedSummary:
     project_members: int = len(PROJECTS) * len(COMMON_MEMBERS) + sum(
         len(workers) for workers in PROJECT_WORKERS.values()
     )
+    user_application_accesses: int = sum(
+        len(application_codes)
+        for application_codes in USER_APPLICATIONS.values()
+    )
 
 
 def seed_projects(
@@ -102,6 +119,7 @@ def seed_projects(
     iam_service: IAMService,
 ) -> ProjectSeedSummary:
     application_by_code: dict[str, Application] = {}
+    subscription_by_code: dict[str, TenantApplication] = {}
     for code, name, domain_type in APPLICATIONS:
         application = repository.get_application(code)
         if application is None:
@@ -114,14 +132,31 @@ def seed_projects(
             repository.commit()
             repository.refresh(application)
         application_by_code[code] = application
-        if repository.get_subscription(application.id) is None:
-            repository.add(
-                TenantApplication(
-                    tenant_id=repository.tenant_id,
-                    application_id=application.id,
-                )
+        subscription = repository.get_subscription(application.id)
+        if subscription is None:
+            subscription = TenantApplication(
+                tenant_id=repository.tenant_id,
+                application_id=application.id,
             )
+            repository.add(subscription)
             repository.commit()
+            repository.refresh(subscription)
+        subscription_by_code[code] = subscription
+
+    for username, application_codes in USER_APPLICATIONS.items():
+        user = iam_service.get_user(username)
+        if user is None:
+            raise RuntimeError(f"IAM seed missing system user: {username}")
+        for application_code in application_codes:
+            subscription = subscription_by_code[application_code]
+            if repository.get_user_application_access(subscription.id, user.id) is None:
+                repository.add(
+                    UserApplicationAccess(
+                        tenant_application_id=subscription.id,
+                        user_id=user.id,
+                    )
+                )
+        repository.commit()
 
     for project_code, app_code, name, start_date, end_date in PROJECTS:
         project = repository.get_project(project_code)
@@ -195,7 +230,8 @@ def main() -> None:
             "City lifeline seed ready: "
             f"{summary.applications} systems, {summary.projects} projects, "
             f"{summary.project_organizations} party links, "
-            f"{summary.project_members} member-role links"
+            f"{summary.project_members} member-role links, "
+            f"{summary.user_application_accesses} user-system grants"
         )
     finally:
         database.dispose()
