@@ -36,6 +36,8 @@ from app.iam.user_admin_service import (
     MembershipConfiguration,
     UserAdministrationService,
 )
+from app.project.repository import ProjectRepository
+from app.project.seed import seed_projects
 from app.workflow.repository import WorkflowRepository
 from app.workflow.seed import seed_workflow
 from app.workorder.repository import WorkOrderRepository
@@ -52,6 +54,8 @@ class ReleaseSmokeResult:
     configured_permission: str
     authorization_effective: bool
     audited_entities: tuple[str, ...]
+    lifeline_systems: int
+    lifeline_projects: int
     dma_final_status: str
     dma_timeline: tuple[str, ...]
 
@@ -73,6 +77,10 @@ def run_release_smoke(database_url: str) -> ReleaseSmokeResult:
             repository = IAMRepository(session)
             iam_service = IAMService(repository)
             seed_iam(iam_service)
+            project_summary = seed_projects(
+                ProjectRepository(session, repository.require_tenant_id()),
+                iam_service,
+            )
             workflow_repository = WorkflowRepository(session)
             seed_workflow(workflow_repository)
             seed_workorder(WorkOrderRepository(session))
@@ -172,6 +180,8 @@ def run_release_smoke(database_url: str) -> ReleaseSmokeResult:
             configured_permission=permission.permission_code,
             authorization_effective=authorization_effective,
             audited_entities=audited_entities,
+            lifeline_systems=project_summary.applications,
+            lifeline_projects=project_summary.projects,
             dma_final_status=dma.final_status,
             dma_timeline=dma.timeline_actions,
         )

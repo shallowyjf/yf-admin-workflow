@@ -9,6 +9,7 @@ import app.auth.models  # noqa: F401
 import app.iam.models  # noqa: F401
 import app.notification.models  # noqa: F401
 import app.operation.models  # noqa: F401
+import app.project.models  # noqa: F401
 import app.workflow.models  # noqa: F401
 import app.workorder.models  # noqa: F401
 from app.db.base import Base

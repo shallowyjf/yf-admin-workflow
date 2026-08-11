@@ -61,6 +61,8 @@ from app.notification.repository import NotificationRepository
 from app.notification.service import NotificationNotFound, NotificationService
 from app.operation.repository import SavedViewRepository
 from app.operation.service import SavedViewError, SavedViewService
+from app.project.repository import ProjectRepository
+from app.project.service import ProjectActor, ProjectPermissionDenied, ProjectService
 from app.workflow.domain import TaskAccessDenied, WorkflowError
 from app.workflow.factory import build_workflow_service
 from app.workflow.repository import WorkflowRepository
@@ -144,6 +146,17 @@ def get_dashboard_service(
         WorkOrderAttachmentService(work_order_repository, permission_service),
         notification_service,
         SavedViewService(SavedViewRepository(session)),
+    )
+
+
+def get_page_project_service(
+    session: Annotated[Session, Depends(get_db_session)],
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+) -> ProjectService:
+    iam_repository = IAMRepository(session, identity.context.tenant_id)
+    return ProjectService(
+        ProjectRepository(session, identity.context.tenant_id),
+        PermissionService(iam_repository),
     )
 
 
@@ -254,6 +267,33 @@ def dashboard_page(
         "工作台",
         "dashboard",
         service.dashboard(identity.profile),
+    )
+
+
+@router.get("/lifeline", response_class=HTMLResponse, include_in_schema=False)
+def lifeline_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    dashboard_service: Annotated[DashboardService, Depends(get_dashboard_service)],
+    project_service: Annotated[ProjectService, Depends(get_page_project_service)],
+) -> HTMLResponse:
+    try:
+        structure = project_service.structure(
+            ProjectActor(
+                identity.context.current_user_id,
+                identity.context.active_org_id,
+            )
+        )
+    except ProjectPermissionDenied as error:
+        raise PageAccessDenied(str(error)) from error
+    return _page(
+        request,
+        dashboard_service,
+        identity,
+        "lifeline.html",
+        "城市生命线权限结构",
+        "lifeline",
+        structure,
     )
 
 

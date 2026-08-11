@@ -110,6 +110,14 @@ class DashboardService:
         navigation = [
             {"code": "dashboard", "label": "工作台", "href": "/dashboard"},
         ]
+        if "project:view" in permissions:
+            navigation.append(
+                {
+                    "code": "lifeline",
+                    "label": "生命线权限结构",
+                    "href": "/lifeline",
+                }
+            )
         if "workorder:view" in permissions:
             navigation.append(
                 {"code": "workorders", "label": "工单中心", "href": "/workorders"}

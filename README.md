@@ -1,6 +1,6 @@
 # 统一权限与流程工单平台 Python Demo
 
-这是正式系统前的可运行架构原型，用于逐轮验证 SaaS 租户、IAM、功能权限、数据范围、CandidateResolver、WorkflowTask 与 WorkOrder 的领域边界。当前代码已完成 **I19：租户与实体组织基线**，正在按智慧城市 SaaS 权限与工单产品路线推进。
+这是正式系统前的可运行架构原型，用于逐轮验证 SaaS 租户、城市生命线多系统、工程项目数据权限、IAM、CandidateResolver、WorkflowTask 与 WorkOrder 的领域边界。当前代码已完成 **I20：城市生命线系统与工程项目权限展示基线**。
 
 ## 环境
 
@@ -19,6 +19,7 @@ python -m venv .venv
 Copy-Item .env.example .env
 .\.venv\Scripts\python.exe -m alembic upgrade head
 .\.venv\Scripts\python.exe -m app.iam.seed
+.\.venv\Scripts\python.exe -m app.project.seed
 .\.venv\Scripts\python.exe -m app.workflow.seed
 .\.venv\Scripts\python.exe -m app.workorder.seed
 ```
@@ -34,6 +35,7 @@ Copy-Item .env.example .env
 - 健康检查：<http://127.0.0.1:8000/health>
 - 演示登录页：<http://127.0.0.1:8000/login>
 - 页面工作台：<http://127.0.0.1:8000/dashboard>
+- 城市生命线权限结构：<http://127.0.0.1:8000/lifeline>
 - OpenAPI：<http://127.0.0.1:8000/docs>
 
 ## 回归测试与质量检查
@@ -63,10 +65,13 @@ Copy-Item .env.example .env
 访问登录页后，可使用以下统一初始密码 `Demo@123456`：
 
 - `admin`：查看组织、用户、角色、岗位、权限等系统视图；
+- `owner_leader`：查看五类生命线系统的全部项目结构；
 - `wangwu`：创建、提交、派单、复核和关闭工单；
-- `lisi`：查看候选任务、认领工单并提交处理结果。
+- `regulator`：查看监管项目并执行复核；
+- `lisi`：查看本人参加的供水、排水、供热项目，认领工单并提交处理结果；
+- `platform_ops`：查看平台运维范围内的项目与审计信息。
 
-页面提供登录、工作台、六个 IAM 管理与审计视图、工单列表、工单详情和我的任务共 11 个核心视图。组织、用户、角色、岗位和权限均已形成配置闭环；IAM 审计支持按实体、动作和操作人过滤。导航和动作按钮由服务层按有效权限计算，隐藏按钮不替代接口二次鉴权。
+页面提供登录、工作台、城市生命线权限结构、六个 IAM 管理与审计视图、工单列表、工单详情和我的任务。组织、用户、角色、岗位和权限均已形成配置闭环；生命线页面展示“系统—项目—参与组织—项目成员角色—权限矩阵”。导航和动作按钮由服务层按有效权限计算，隐藏按钮不替代接口二次鉴权。
 
 ## V0.1 文档
 
@@ -77,6 +82,6 @@ Copy-Item .env.example .env
 
 ## 当前边界
 
-V0.1 已形成组织、用户、角色、岗位、权限、数据范围和 IAM 审计配置闭环，并可执行标准 DMA 工单闭环。I16–I18 已补齐工单协作、SLA、附件、个人通知、服务端分页、保存视图、批量工单操作和 IAM 批量导入导出；I19 增加租户主数据、租户登录上下文和 IAM 租户隔离。它仍是本地 Demo：项目数据权限、认证安全加固、授权变更治理、对象存储/外部通知、并发幂等、不可篡改审计和生产运维属于真实上线前置范围。
+V0.1 已形成组织、用户、角色、岗位、权限、数据范围和 IAM 审计配置闭环，并可执行标准 DMA 工单闭环。I19 增加租户主数据与 IAM 租户隔离；I20 增加五类生命线系统、五个默认工程项目、四方参与组织和项目成员角色展示。它仍是本地 Demo：工单的显式系统/项目绑定、认证安全加固、授权治理、对象存储/外部通知、并发幂等、不可篡改审计和生产运维属于真实上线前置范围。
 
-Demo 租户编码为 `DEMO`；用户为 `admin`、`wangwu`、`zhangsan`、`lisi`、`zhaoliu`，初始密码统一为 `Demo@123456`，仅限本地演示。候选人解析演示可运行 `.\.venv\Scripts\python.exe -m app.demo.candidate_demo`。完整需求见 `docs/PERMISSION_WORKORDER_REQUIREMENTS.md`，本轮验收见 `docs/iterations/I19.md`。
+Demo 租户编码为 `DEMO`；用户为 `admin`、`owner_leader`、`wangwu`、`regulator`、`zhangsan`、`lisi`、`zhaoliu`、`platform_ops`，初始密码统一为 `Demo@123456`，仅限本地演示。完整需求见 `docs/PERMISSION_WORKORDER_REQUIREMENTS.md`，本轮验收见 `docs/iterations/I20.md`，后续路线见 `docs/iterations/ROADMAP_I20_I25.md`。

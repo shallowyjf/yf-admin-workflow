@@ -9,11 +9,16 @@ from app.db.base import Base
 
 def test_shared_declarative_base_contains_current_tables() -> None:
     assert set(Base.metadata.tables) == {
+        "pm_project",
+        "pm_project_member",
+        "pm_project_org",
+        "sys_application",
         "sys_auth_session",
         "sys_iam_audit_log",
         "sys_notification",
         "sys_saved_view",
         "sys_tenant",
+        "sys_tenant_application",
         "sys_org",
         "sys_permission",
         "sys_position",

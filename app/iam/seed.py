@@ -12,32 +12,57 @@ from .repository import IAMRepository
 from .service import IAMService
 
 DEFAULT_TENANT_CODE = "DEMO"
-DEFAULT_TENANT_NAME = "智慧城市演示租户"
+DEFAULT_TENANT_NAME = "某市城市生命线演示租户"
 ORGANIZATIONS = (
-    ("GROUP", "XX水务集团", "GROUP", None, 10),
-    ("DISPATCH_CENTER", "调度中心", "DEPARTMENT", "GROUP", 20),
-    ("PIPE_OPERATION", "管网运行部", "DEPARTMENT", "GROUP", 30),
-    ("INSPECTION_TEAM_1", "巡检一组", "TEAM", "PIPE_OPERATION", 40),
-    ("INSPECTION_TEAM_2", "巡检二组", "TEAM", "PIPE_OPERATION", 50),
+    ("GROUP", "某市城市生命线建设运营中心（甲方）", "OWNER", None, 10),
+    ("DISPATCH_CENTER", "甲方项目调度中心", "OWNER_DEPARTMENT", "GROUP", 20),
+    ("REGULATOR", "某市住房和城乡建设局（监管方）", "REGULATOR", None, 30),
+    (
+        "REGULATOR_CENTER",
+        "城市生命线监管中心",
+        "REGULATOR_DEPARTMENT",
+        "REGULATOR",
+        40,
+    ),
+    ("CONTRACTOR", "城市生命线工程联合体（施工方）", "CONTRACTOR", None, 50),
+    ("PIPE_OPERATION", "联合施工项目部", "PROJECT_DEPARTMENT", "CONTRACTOR", 60),
+    ("INSPECTION_TEAM_1", "现场施工一班", "TEAM", "PIPE_OPERATION", 70),
+    ("INSPECTION_TEAM_2", "现场施工二班", "TEAM", "PIPE_OPERATION", 80),
+    ("PLATFORM", "智慧城市软件平台公司（平台方）", "PLATFORM", None, 90),
+    (
+        "PLATFORM_DELIVERY",
+        "生命线平台交付运维部",
+        "PLATFORM_DEPARTMENT",
+        "PLATFORM",
+        100,
+    ),
 )
 USERS = (
     ("admin", "系统管理员"),
-    ("wangwu", "调度管理员"),
-    ("zhangsan", "管网运行部负责人"),
-    ("lisi", "抢修人员"),
-    ("zhaoliu", "抢修人员"),
+    ("owner_leader", "甲方领导"),
+    ("wangwu", "甲方调度管理员"),
+    ("regulator", "监管复核人员"),
+    ("zhangsan", "施工项目经理"),
+    ("lisi", "现场施工人员"),
+    ("zhaoliu", "现场施工人员"),
+    ("platform_ops", "平台运维人员"),
 )
 ROLES = (
     ("SYSTEM_ADMIN", "系统管理员"),
-    ("DISPATCHER", "调度员"),
-    ("WORKORDER_MANAGER", "工单管理员"),
-    ("REPAIRER", "抢修人员"),
-    ("REVIEWER", "复核人员"),
+    ("OWNER_LEADER", "甲方领导"),
+    ("DISPATCHER", "甲方调度员"),
+    ("WORKORDER_MANAGER", "施工项目经理"),
+    ("REPAIRER", "施工处置人员"),
+    ("REVIEWER", "监管复核人员"),
+    ("PLATFORM_OPERATOR", "平台运维人员"),
 )
 POSITIONS = (
-    ("DEPT_MANAGER", "部门负责人"),
-    ("DISPATCHER", "调度员"),
-    ("REPAIRER", "抢修人员"),
+    ("TENANT_LEADER", "甲方负责人"),
+    ("DEPT_MANAGER", "施工项目经理"),
+    ("SUPERVISOR", "监管人员"),
+    ("DISPATCHER", "项目调度员"),
+    ("REPAIRER", "现场施工人员"),
+    ("PLATFORM_ENGINEER", "平台运维工程师"),
 )
 DEMO_INITIAL_PASSWORD = "Demo@123456"
 ROLE_POLICIES = {
@@ -45,8 +70,21 @@ ROLE_POLICIES = {
         tuple(code for code, _, _ in PERMISSIONS),
         DataScopeType.ALL,
     ),
+    "OWNER_LEADER": (
+        (
+            "system:application:view",
+            "project:view",
+            "project:progress:view",
+            "project:progress:view-all",
+            "workorder:view",
+        ),
+        DataScopeType.ALL,
+    ),
     "DISPATCHER": (
         (
+            "system:application:view",
+            "project:view",
+            "project:progress:view",
             "workorder:view",
             "workorder:create",
             "workorder:dispatch",
@@ -61,6 +99,12 @@ ROLE_POLICIES = {
     ),
     "WORKORDER_MANAGER": (
         (
+            "system:application:view",
+            "project:view",
+            "project:update",
+            "project:organization:manage",
+            "project:member:manage",
+            "project:progress:view",
             "workorder:view",
             "workorder:create",
             "workorder:dispatch",
@@ -75,6 +119,8 @@ ROLE_POLICIES = {
     ),
     "REPAIRER": (
         (
+            "system:application:view",
+            "project:view",
             "workorder:view",
             "workorder:claim",
             "workorder:handle",
@@ -86,6 +132,9 @@ ROLE_POLICIES = {
     ),
     "REVIEWER": (
         (
+            "system:application:view",
+            "project:view",
+            "project:progress:view",
             "workorder:view",
             "workorder:comment",
             "workorder:urge",
@@ -96,19 +145,35 @@ ROLE_POLICIES = {
         ),
         DataScopeType.ORG,
     ),
+    "PLATFORM_OPERATOR": (
+        (
+            "system:application:view",
+            "project:view",
+            "project:progress:view",
+            "workorder:view",
+            "workorder:comment",
+            "workorder:attachment",
+            "system:audit:view",
+        ),
+        DataScopeType.ALL,
+    ),
 }
 
 
 @dataclass(frozen=True)
 class SeedSummary:
     tenants: int = 1
-    organizations: int = 5
-    users: int = 5
-    roles: int = 5
-    positions: int = 3
-    permissions: int = 40
-    role_permissions: int = 71
-    data_scopes: int = 71
+    organizations: int = len(ORGANIZATIONS)
+    users: int = len(USERS)
+    roles: int = len(ROLES)
+    positions: int = len(POSITIONS)
+    permissions: int = len(PERMISSIONS)
+    role_permissions: int = sum(
+        len(permission_codes) for permission_codes, _ in ROLE_POLICIES.values()
+    )
+    data_scopes: int = sum(
+        len(permission_codes) for permission_codes, _ in ROLE_POLICIES.values()
+    )
 
 
 def seed_iam(service: IAMService) -> SeedSummary:
@@ -158,10 +223,19 @@ def seed_iam(service: IAMService) -> SeedSummary:
 
     assignments = (
         ("admin", "GROUP", ("SYSTEM_ADMIN",), ()),
+        ("admin", "PLATFORM", (), ()),
+        ("owner_leader", "GROUP", ("OWNER_LEADER",), ("TENANT_LEADER",)),
         ("wangwu", "DISPATCH_CENTER", ("DISPATCHER", "REVIEWER"), ("DISPATCHER",)),
+        ("regulator", "REGULATOR", ("REVIEWER",), ("SUPERVISOR",)),
         ("zhangsan", "PIPE_OPERATION", ("WORKORDER_MANAGER",), ("DEPT_MANAGER",)),
         ("lisi", "PIPE_OPERATION", ("REPAIRER",), ("REPAIRER",)),
         ("zhaoliu", "PIPE_OPERATION", ("REPAIRER",), ("REPAIRER",)),
+        (
+            "platform_ops",
+            "PLATFORM",
+            ("PLATFORM_OPERATOR",),
+            ("PLATFORM_ENGINEER",),
+        ),
     )
     for username, org_code, role_codes, position_codes in assignments:
         membership = service.get_membership(username, org_code)
@@ -169,7 +243,7 @@ def seed_iam(service: IAMService) -> SeedSummary:
             membership = service.add_user_to_organization(
                 username,
                 org_code,
-                is_primary=True,
+                is_primary=not (username == "admin" and org_code == "PLATFORM"),
             )
         current_roles = {link.role.role_code for link in membership.role_links}
         for role_code in role_codes:

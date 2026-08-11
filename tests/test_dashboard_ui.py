@@ -216,7 +216,7 @@ def test_i16_work_order_detail_exposes_collaboration_actions(
     assert 'data-testid="action-transfer"' in detail.text
     assert 'data-testid="action-comment"' in detail.text
     assert 'data-testid="action-urge"' in detail.text
-    assert "抢修人员 @zhaoliu" in detail.text
+    assert "现场施工人员 @zhaoliu" in detail.text
 
     assert ui_client.post(
         f"/ui/workorders/{work_order_id}/comment",
@@ -393,7 +393,7 @@ def test_user_page_lifecycle_and_membership_configuration(
     result_page = ui_client.get("/iam/users")
     assert "页面用户（更新）" in result_page.text
     assert "调度员" in result_page.text
-    assert "抢修人员" in result_page.text
+    assert "施工处置人员" in result_page.text
     assert ui_client.post(
         f"/ui/users/{user_id}/password",
         data={"new_password": "Changed@123"},

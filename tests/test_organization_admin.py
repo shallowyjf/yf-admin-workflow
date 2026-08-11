@@ -58,8 +58,8 @@ def test_organization_crud_updates_descendant_paths_and_audit(
         actor,
     )
     db_session.refresh(child)
-    assert updated.org_path == "/GROUP/PIPE_OPERATION/TEMP_AREA"
-    assert child.org_path == "/GROUP/PIPE_OPERATION/TEMP_AREA/TEMP_TEAM"
+    assert updated.org_path == "/CONTRACTOR/PIPE_OPERATION/TEMP_AREA"
+    assert child.org_path == "/CONTRACTOR/PIPE_OPERATION/TEMP_AREA/TEMP_TEAM"
 
     service.delete(child.id, actor)
     service.delete(parent.id, actor)
@@ -146,7 +146,7 @@ def test_organization_rest_api_crud_and_tree(
     )
     assert created.status_code == 201
     organization_id = created.json()["id"]
-    assert created.json()["org_path"] == "/GROUP/PIPE_OPERATION/API_TEAM"
+    assert created.json()["org_path"] == "/CONTRACTOR/PIPE_OPERATION/API_TEAM"
 
     updated = organization_client.put(
         f"/api/orgs/{organization_id}",

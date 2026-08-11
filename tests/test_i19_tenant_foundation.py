@@ -71,7 +71,7 @@ def test_same_identity_codes_are_isolated_by_tenant(
 
     default_profile = _login(client).json()
     assert default_profile["tenant_code"] == "DEMO"
-    assert default_profile["tenant_name"] == "智慧城市演示租户"
+    assert default_profile["tenant_name"] == "某市城市生命线演示租户"
     assert default_profile["user_id"] == default_admin_id
 
     second_login = _login(client, "city_b")
@@ -86,6 +86,9 @@ def test_same_identity_codes_are_isolated_by_tenant(
     assert {item["username"] for item in users.json()} == {
         "admin",
         "lisi",
+        "owner_leader",
+        "platform_ops",
+        "regulator",
         "wangwu",
         "zhangsan",
         "zhaoliu",
@@ -121,8 +124,8 @@ def test_scoped_repositories_return_only_their_tenant_entities(
     default_repository = IAMRepository(db_session, 1)
     second_repository = IAMRepository(db_session, second_tenant.id)
 
-    assert len(default_repository.list_users()) == 5
-    assert len(second_repository.list_users()) == 5
+    assert len(default_repository.list_users()) == 8
+    assert len(second_repository.list_users()) == 8
     assert default_repository.get_user_by_username("admin").id != (
         second_repository.get_user_by_username("admin").id
     )

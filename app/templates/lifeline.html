@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-intro">
+  <div><h2>租户 → 生命线系统 → 工程项目 → 参与组织 → 项目成员角色</h2><p>组织表达真实单位，项目承载数据权限；同一成员可参与多个系统下的不同工程项目。</p></div>
+  <span class="result-count">{{ '全部项目视图' if can_view_all_projects else '本人参与项目' }}</span>
+</section>
+
+<section class="stats-grid" aria-label="生命线系统统计">
+  {% for application in applications %}
+  <article class="stat-card{% if loop.first %} accent{% endif %}"><span>{{ application.domain_type }}</span><strong>{{ application.projects|length }}</strong><small>{{ application.application_name }}</small></article>
+  {% endfor %}
+</section>
+
+{% for application in applications %}
+<section class="panel">
+  <div class="panel-head"><div><p class="eyebrow">{{ application.application_code }}</p><h2>{{ application.application_name }}</h2></div><span class="status">{{ application.projects|length }} 个工程项目</span></div>
+  {% for project in application.projects %}
+  <article class="role-card">
+    <div class="role-card-head"><div><strong>{{ project.project_name }}</strong><small class="cell-sub">{{ project.project_code }} · {{ project.start_date }} 至 {{ project.end_date }}</small></div><span class="status status-processing">{{ project.project_status }}</span></div>
+    <div class="split-grid">
+      <div><p class="meta-label">参与组织</p><div class="tag-list">{% for org in project.organizations %}<span class="tag"><b>{{ org.party_type }}</b> · {{ org.org_name }}{% if org.is_lead %} · 牵头{% endif %}</span>{% endfor %}</div></div>
+      <div><p class="meta-label">项目成员与角色</p><div class="tag-list">{% for member in project.members %}<span class="tag"><b>{{ member.role_name }}</b> · {{ member.display_name }} / {{ member.org_name }}</span>{% endfor %}</div></div>
+    </div>
+  </article>
+  {% else %}<div class="empty">当前账号没有该系统下的项目成员资格</div>{% endfor %}
+</section>
+{% endfor %}
+
+<section class="panel">
+  <div class="panel-head"><div><p class="eyebrow">DEFAULT RBAC</p><h2>默认角色权限矩阵</h2></div><span class="status">组织上下文 + 项目成员资格共同生效</span></div>
+  <div class="table-wrap"><table><thead><tr><th>角色</th><th>类型</th><th>权限与数据范围</th></tr></thead><tbody>
+    {% for role in role_matrix %}<tr><td><strong>{{ role.role_name }}</strong><small class="cell-sub">{{ role.role_code }}</small></td><td>{{ role.role_type }}</td><td><div class="tag-list">{% for permission in role.permissions %}<span class="tag"><code>{{ permission.permission_code }}</code> · {{ permission.scope_type or '—' }}</span>{% endfor %}</div></td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+{% endblock %}

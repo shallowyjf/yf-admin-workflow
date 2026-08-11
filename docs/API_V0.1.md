@@ -7,6 +7,7 @@
 | System | `GET /health` | 应用、数据库、版本与迭代健康状态 |
 | Auth | `POST /auth/login`、`POST /auth/logout` | 登录、退出 |
 | Auth | `GET /auth/me`、`POST /auth/active-org` | 当前用户、有效权限和活动组织切换 |
+| City Lifeline | `GET /api/lifeline/structure` | 当前账号可见的系统、项目、参与组织、成员角色与默认权限矩阵 |
 | Organization | `GET/POST /api/orgs` | 列表、新增 |
 | Organization | `GET /api/orgs/tree` | 组织树 |
 | Organization | `GET/PUT/DELETE /api/orgs/{id}` | 详情、编辑、安全删除 |

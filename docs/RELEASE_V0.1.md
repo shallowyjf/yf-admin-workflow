@@ -3,7 +3,7 @@
 ## 发布基线
 
 - Python 3.12、FastAPI、SQLAlchemy 2、Alembic、SQLite。
-- 版本 `0.1.0`，当前增量迭代 `I19`。
+- 版本 `0.1.0`，当前增量迭代 `I20`。
 - 本地演示账号初始密码均为 `Demo@123456`，禁止复用于任何真实环境。
 
 ## 从空目录数据库启动
@@ -14,6 +14,7 @@ python -m venv .venv
 Copy-Item .env.example .env
 .\.venv\Scripts\python.exe -m alembic upgrade head
 .\.venv\Scripts\python.exe -m app.iam.seed
+.\.venv\Scripts\python.exe -m app.project.seed
 .\.venv\Scripts\python.exe -m app.workflow.seed
 .\.venv\Scripts\python.exe -m app.workorder.seed
 .\.venv\Scripts\python.exe scripts\quality_gate.py
@@ -24,8 +25,9 @@ Copy-Item .env.example .env
 
 ## 人工验收清单
 
-1. 打开 `/health`，确认 `status=ok`、`database=ok`、`iteration=I19`。
+1. 打开 `/health`，确认 `status=ok`、`database=ok`、`iteration=I20`。
 2. 使用租户编码 `DEMO` 和 `admin` 登录，确认 `/auth/me` 返回当前租户，且 IAM 页面只展示当前租户数据。
+3. 打开 `/lifeline`，确认五类系统、五个工程项目、四方参与组织和默认角色权限矩阵完整显示。
 3. 用 `admin` 创建临时岗位和自定义 Permission；创建角色并配置 Permission + ORG DataScope；创建用户并绑定 PIPE_OPERATION、角色和岗位。
 4. 切换到新用户，确认只显示被授权导航，直接调用未授权 API 返回 403；停用成员/角色/用户后权限立即失效。
 5. 用 `wangwu` 创建并提交 DMA 工单，派给 PIPE_OPERATION；用 `lisi` 认领并提交结果；再用 `wangwu` 复核通过并关闭。

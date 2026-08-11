@@ -27,6 +27,7 @@ from app.iam.router import router as iam_router
 from app.iam.user_router import router as iam_user_router
 from app.notification.router import router as notification_router
 from app.operation.router import router as operation_router
+from app.project.router import router as project_router
 from app.system.repository import HealthRepository
 from app.system.router import router as system_router
 from app.system.service import HealthService
@@ -66,6 +67,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(iam_bulk_router)
     application.include_router(notification_router)
     application.include_router(operation_router)
+    application.include_router(project_router)
     application.include_router(work_order_router)
     application.include_router(workflow_router)
     application.include_router(dashboard_router)
