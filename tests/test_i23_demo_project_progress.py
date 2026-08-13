@@ -56,8 +56,8 @@ def test_owner_leader_sees_cross_system_demo_progress_but_cannot_edit(
     assert response.status_code == 200
     payload = response.json()
     assert payload["can_view_all_projects"] is True
-    assert payload["summary"]["project_count"] == 5
-    assert payload["summary"]["system_count"] == 5
+    assert payload["summary"]["project_count"] == 6
+    assert payload["summary"]["system_count"] == 6
     assert payload["summary"]["delayed_projects"] >= 1
     assert all(len(item["milestones"]) == 4 for item in payload["projects"])
     assert all(item["can_update"] is False for item in payload["projects"])
@@ -122,12 +122,12 @@ def test_project_member_view_excludes_unassigned_new_project(
         },
     )
     assert created.status_code == 201
-    assert admin_client.get("/api/lifeline/progress").json()["summary"]["project_count"] == 6
+    assert admin_client.get("/api/lifeline/progress").json()["summary"]["project_count"] == 7
 
     _login(manager_client, "zhangsan")
     manager_progress = manager_client.get("/api/lifeline/progress")
     assert manager_progress.status_code == 200
-    assert manager_progress.json()["summary"]["project_count"] == 5
+    assert manager_progress.json()["summary"]["project_count"] == 6
     assert "I23_LEADER_ONLY" not in {
         item["project_code"] for item in manager_progress.json()["projects"]
     }

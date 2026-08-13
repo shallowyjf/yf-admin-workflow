@@ -38,7 +38,10 @@ def tenant_client(tmp_path: Path) -> Iterator[tuple[TestClient, int, int]]:
         session.add(second_tenant)
         session.commit()
         session.refresh(second_tenant)
-        seed_iam(IAMService(IAMRepository(session, second_tenant.id)))
+        seed_iam(
+            IAMService(IAMRepository(session, second_tenant.id)),
+            city_name="海州市",
+        )
         assert default_admin_id is not None
         assert default_group_id is not None
     database.dispose()
@@ -71,13 +74,14 @@ def test_same_identity_codes_are_isolated_by_tenant(
 
     default_profile = _login(client).json()
     assert default_profile["tenant_code"] == "DEMO"
-    assert default_profile["tenant_name"] == "某市城市生命线演示租户"
+    assert default_profile["tenant_name"] == "江城市城市生命线租户"
     assert default_profile["user_id"] == default_admin_id
 
     second_login = _login(client, "city_b")
     assert second_login.status_code == 200
     second_profile = second_login.json()
     assert second_profile["tenant_code"] == "CITY_B"
+    assert second_profile["tenant_name"] == "B市智慧城市"
     assert second_profile["user_id"] != default_admin_id
     assert second_profile["active_org_id"] != default_group_id
 
@@ -85,10 +89,16 @@ def test_same_identity_codes_are_isolated_by_tenant(
     assert users.status_code == 200
     assert {item["username"] for item in users.json()} == {
         "admin",
+        "dma_specialist",
+        "hydraulic_specialist",
         "lisi",
+        "owner_pm",
         "owner_leader",
         "platform_ops",
         "regulator",
+        "software_delivery",
+        "supervisor_engineer",
+        "water_drainage_leader",
         "wangwu",
         "zhangsan",
         "zhaoliu",
@@ -119,13 +129,16 @@ def test_scoped_repositories_return_only_their_tenant_entities(
     db_session.add(second_tenant)
     db_session.commit()
     db_session.refresh(second_tenant)
-    seed_iam(IAMService(IAMRepository(db_session, second_tenant.id)))
+    seed_iam(
+        IAMService(IAMRepository(db_session, second_tenant.id)),
+        city_name="云州市",
+    )
 
     default_repository = IAMRepository(db_session, 1)
     second_repository = IAMRepository(db_session, second_tenant.id)
 
-    assert len(default_repository.list_users()) == 8
-    assert len(second_repository.list_users()) == 8
+    assert len(default_repository.list_users()) == 14
+    assert len(second_repository.list_users()) == 14
     assert default_repository.get_user_by_username("admin").id != (
         second_repository.get_user_by_username("admin").id
     )

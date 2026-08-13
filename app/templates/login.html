@@ -46,7 +46,7 @@
         return;
       }
       const next = new URLSearchParams(location.search).get('next');
-      location.href = next && next.startsWith('/') ? next : '/dashboard';
+      location.href = next && next.startsWith('/') ? next : '/entry';
     });
   </script>
 </body>

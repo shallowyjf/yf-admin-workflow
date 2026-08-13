@@ -260,16 +260,17 @@ def test_system_entrance_revocation_invalidates_existing_session(
     assert any(item["entity_type"] == "USER_APPLICATION" for item in audit_logs)
 
 
-def test_lifeline_page_exposes_context_switchers_and_project_form(
+def test_lifeline_page_is_removed_and_project_actions_return_to_progress(
     i21_clients: tuple[TestClient, TestClient],
 ) -> None:
     client, _ = i21_clients
     profile = _login(client, "admin").json()
     page = client.get("/lifeline")
-    assert page.status_code == 200
-    assert 'id="active-application"' in page.text
-    assert 'id="active-project"' in page.text
-    assert "新增工程项目" in page.text
+    assert page.status_code == 404
+    progress_page = client.get("/project-progress")
+    assert progress_page.status_code == 200
+    assert 'id="active-application"' in progress_page.text
+    assert 'id="active-project"' in progress_page.text
 
     response = client.post(
         "/ui/projects",
@@ -283,8 +284,8 @@ def test_lifeline_page_exposes_context_switchers_and_project_form(
         follow_redirects=False,
     )
     assert response.status_code == 303
-    assert response.headers["location"] == "/lifeline"
-    assert "道路页面验收工程" in client.get("/lifeline").text
+    assert response.headers["location"] == "/project-progress"
+    assert "道路页面验收工程" in client.get("/project-progress").text
 
 
 def test_project_validation_conflicts_and_empty_project_delete(
@@ -295,7 +296,7 @@ def test_project_validation_conflicts_and_empty_project_delete(
     water_id = _application(profile, "WATER_SUPPLY")["id"]
     water_project_id = _project(profile, "WS_NETWORK_RENEWAL")["id"]
 
-    assert len(client.get("/api/lifeline/projects").json()) == 5
+    assert len(client.get("/api/lifeline/projects").json()) == 6
     assert client.get("/api/lifeline/projects/999999").status_code == 404
     invalid_code = client.post(
         "/api/lifeline/projects",

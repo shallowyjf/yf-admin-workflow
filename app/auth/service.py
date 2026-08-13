@@ -49,6 +49,7 @@ class ApplicationContext:
     id: int
     application_code: str
     application_name: str
+    domain_type: str
 
 
 @dataclass(frozen=True)
@@ -118,6 +119,14 @@ class AuthService:
         ):
             raise AuthenticationError("invalid username or password")
 
+        return self.create_tenant_session(user.id, tenant.id)
+
+    def create_tenant_session(self, user_id: int, tenant_id: int) -> LoginResult:
+        """Create a tenant session after credentials or trusted platform entry."""
+        tenant = self.repository.get_tenant(tenant_id)
+        user = self.repository.get_user(user_id)
+        if tenant is None or user is None or user.tenant_id != tenant.id:
+            raise AuthenticationError("tenant administrator is unavailable")
         memberships = self.repository.list_active_memberships(user.id, tenant.id)
         if not memberships:
             raise ActiveOrganizationDenied("user has no active organization")
@@ -351,6 +360,7 @@ class AuthService:
                     id=application.id,
                     application_code=application.application_code,
                     application_name=application.application_name,
+                    domain_type=application.domain_type,
                 )
                 for application in applications
             ],

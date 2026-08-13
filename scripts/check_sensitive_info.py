@@ -85,6 +85,11 @@ def scan_repository(repo_root: Path) -> list[Finding]:
             findings.append(Finding(normalized, 0, "forbidden tracked file"))
             continue
         path = repo_root / relative_path
+        # ``git ls-files`` still returns an index entry while a tracked file is
+        # staged or unstaged for deletion. Scan the current worktree state and
+        # safely skip entries that no longer exist there.
+        if not path.is_file():
+            continue
         if path.suffix.lower() not in TEXT_SUFFIXES:
             continue
         try:

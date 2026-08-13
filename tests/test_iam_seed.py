@@ -13,7 +13,7 @@ from app.iam.models import (
     User,
 )
 from app.iam.repository import IAMRepository
-from app.iam.seed import DEMO_INITIAL_PASSWORD, seed_iam
+from app.iam.seed import CITY_TENANTS, DEMO_INITIAL_PASSWORD, seed_city_tenants, seed_iam
 from app.iam.service import IAMService
 
 
@@ -44,7 +44,7 @@ def test_seed_is_idempotent_and_creates_required_relationships(
 
     assert {
         organization.org_type for organization in service.list_organizations()
-    }.issuperset({"OWNER", "REGULATOR", "CONTRACTOR", "PLATFORM"})
+    }.issuperset({"OWNER", "REGULATOR", "SUPERVISOR", "CONTRACTOR", "PLATFORM"})
 
     repairers = set()
     for username in ("lisi", "zhaoliu"):
@@ -83,3 +83,20 @@ def test_seed_is_idempotent_and_creates_required_relationships(
     assert {link.role.role_code for link in platform_operator.role_links} == {
         "PLATFORM_OPERATOR"
     }
+
+
+def test_city_seed_creates_three_isolated_city_tenants(db_session: Session) -> None:
+    summaries = seed_city_tenants(db_session)
+    seed_city_tenants(db_session)
+    catalog = IAMRepository(db_session)
+
+    assert len(summaries) == 3
+    assert {item.tenant_code for item in catalog.list_tenants()} == {
+        item[0] for item in CITY_TENANTS
+    }
+    for tenant_code, tenant_name, city_name in CITY_TENANTS:
+        tenant = catalog.get_tenant_by_code(tenant_code)
+        assert tenant is not None and tenant.tenant_name == tenant_name
+        repository = IAMRepository(db_session, tenant.id)
+        group = repository.get_organization_by_code("GROUP")
+        assert group is not None and city_name in group.org_name

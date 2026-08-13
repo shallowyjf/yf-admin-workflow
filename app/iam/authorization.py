@@ -88,6 +88,26 @@ class PermissionService:
 
         return result
 
+    def organization_scope_ids(
+        self,
+        user_id: int,
+        permission_code: str,
+        active_org_id: int,
+    ) -> set[int] | None:
+        """Return visible organization ids, or ``None`` for tenant-wide access.
+
+        Organization trees use the same role data-scope rules as business data.
+        SELF has no meaningful organization row of its own, so it is constrained
+        to the actor's active organization.
+        """
+        scope = self.work_order_scope(user_id, permission_code, active_org_id)
+        if scope.all_data:
+            return None
+        organization_ids = set(scope.org_ids)
+        if scope.self_user_id is not None:
+            organization_ids.add(active_org_id)
+        return organization_ids
+
     @staticmethod
     def _custom_org_ids(scope_config: dict | None) -> set[int]:
         if not isinstance(scope_config, dict):

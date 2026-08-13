@@ -69,7 +69,15 @@ class OrganizationAdministrationService:
         actor: IAMAdministrationActor,
     ) -> list[Organization]:
         self._require_permission(actor, self.VIEW_PERMISSION)
-        return self.repository.list_organizations()
+        organizations = self.repository.list_organizations()
+        visible_ids = self.permission_service.organization_scope_ids(
+            actor.user_id,
+            self.VIEW_PERMISSION,
+            actor.active_org_id,
+        )
+        if visible_ids is None:
+            return organizations
+        return [item for item in organizations if item.id in visible_ids]
 
     def get_organization(
         self,
@@ -77,7 +85,15 @@ class OrganizationAdministrationService:
         actor: IAMAdministrationActor,
     ) -> Organization:
         self._require_permission(actor, self.VIEW_PERMISSION)
-        return self._require_organization(organization_id)
+        organization = self._require_organization(organization_id)
+        visible_ids = self.permission_service.organization_scope_ids(
+            actor.user_id,
+            self.VIEW_PERMISSION,
+            actor.active_org_id,
+        )
+        if visible_ids is not None and organization.id not in visible_ids:
+            raise IAMAdministrationPermissionDenied("当前数据范围不可查看该组织")
+        return organization
 
     def create(
         self,

@@ -29,6 +29,7 @@
         <span class="avatar">{{ profile.display_name[:1] }}</span>
         <span><strong>{{ profile.display_name }}</strong><small>{{ profile.tenant_name }} · {{ profile.role_codes|join(' · ') }}</small></span>
       </div>
+      {% if request.cookies.get('yf_platform_session') %}<a class="platform-return" href="/platform/tenants">← 返回城市选择</a>{% endif %}
       {% endif %}
     </aside>
     <section class="workspace">

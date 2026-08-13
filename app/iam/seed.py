@@ -12,11 +12,21 @@ from .repository import IAMRepository
 from .service import IAMService
 
 DEFAULT_TENANT_CODE = "DEMO"
-DEFAULT_TENANT_NAME = "某市城市生命线演示租户"
+DEFAULT_TENANT_NAME = "江城市城市生命线租户"
+CITY_TENANTS = (
+    (DEFAULT_TENANT_CODE, DEFAULT_TENANT_NAME, "江城市"),
+    ("CITY_HAIZHOU", "海州市城市生命线租户", "海州市"),
+    ("CITY_YUNZHOU", "云州市城市生命线租户", "云州市"),
+)
 ORGANIZATIONS = (
-    ("GROUP", "某市城市生命线建设运营中心（甲方）", "OWNER", None, 10),
-    ("DISPATCH_CENTER", "甲方项目调度中心", "OWNER_DEPARTMENT", "GROUP", 20),
-    ("REGULATOR", "某市住房和城乡建设局（监管方）", "REGULATOR", None, 30),
+    ("GROUP", "{city}城市生命线建设运营中心（总体甲方）", "OWNER", None, 10),
+    ("DISPATCH_CENTER", "城市综合调度中心", "OWNER_DEPARTMENT", "GROUP", 20),
+    ("OWNER_WATER", "供水业务管理部", "OWNER_DEPARTMENT", "GROUP", 21),
+    ("OWNER_DRAINAGE", "排水业务管理部", "OWNER_DEPARTMENT", "GROUP", 22),
+    ("OWNER_GAS", "燃气业务管理部", "OWNER_DEPARTMENT", "GROUP", 23),
+    ("OWNER_HEATING", "供热业务管理部", "OWNER_DEPARTMENT", "GROUP", 24),
+    ("OWNER_ROAD", "道路业务管理部", "OWNER_DEPARTMENT", "GROUP", 25),
+    ("REGULATOR", "{city}住房和城乡建设局（监管方）", "REGULATOR", None, 30),
     (
         "REGULATOR_CENTER",
         "城市生命线监管中心",
@@ -24,17 +34,46 @@ ORGANIZATIONS = (
         "REGULATOR",
         40,
     ),
+    ("SUPERVISOR", "{city}城市生命线工程监理公司", "SUPERVISOR", None, 41),
+    (
+        "WATER_SUPERVISION",
+        "供水工程监理部",
+        "SUPERVISOR_DEPARTMENT",
+        "SUPERVISOR",
+        42,
+    ),
+    (
+        "MUNICIPAL_SUPERVISION",
+        "市政工程监理部",
+        "SUPERVISOR_DEPARTMENT",
+        "SUPERVISOR",
+        43,
+    ),
     ("CONTRACTOR", "城市生命线工程联合体（施工方）", "CONTRACTOR", None, 50),
-    ("PIPE_OPERATION", "联合施工项目部", "PROJECT_DEPARTMENT", "CONTRACTOR", 60),
+    ("PIPE_OPERATION", "供水施工项目部", "PROJECT_DEPARTMENT", "CONTRACTOR", 60),
+    (
+        "MUNICIPAL_CONSTRUCTION",
+        "市政施工项目部",
+        "PROJECT_DEPARTMENT",
+        "CONTRACTOR",
+        61,
+    ),
     ("INSPECTION_TEAM_1", "现场施工一班", "TEAM", "PIPE_OPERATION", 70),
     ("INSPECTION_TEAM_2", "现场施工二班", "TEAM", "PIPE_OPERATION", 80),
-    ("PLATFORM", "智慧城市软件平台公司（平台方）", "PLATFORM", None, 90),
+    ("PLATFORM", "智慧城市软件供应商", "PLATFORM", None, 90),
     (
         "PLATFORM_DELIVERY",
-        "生命线平台交付运维部",
+        "生命线产品交付部",
         "PLATFORM_DEPARTMENT",
         "PLATFORM",
         100,
+    ),
+    (
+        "PLATFORM_OPERATIONS",
+        "生命线平台运维部",
+        "PLATFORM_DEPARTMENT",
+        "PLATFORM",
+        101,
     ),
 )
 USERS = (
@@ -46,6 +85,12 @@ USERS = (
     ("lisi", "现场施工人员"),
     ("zhaoliu", "现场施工人员"),
     ("platform_ops", "平台运维人员"),
+    ("water_drainage_leader", "供排水业务负责人"),
+    ("dma_specialist", "DMA 业务专员"),
+    ("hydraulic_specialist", "水力模型业务专员"),
+    ("owner_pm", "供水甲方项目经理"),
+    ("supervisor_engineer", "供水监理工程师"),
+    ("software_delivery", "软件交付工程师"),
 )
 ROLES = (
     ("SYSTEM_ADMIN", "系统管理员"),
@@ -55,6 +100,11 @@ ROLES = (
     ("REPAIRER", "施工处置人员"),
     ("REVIEWER", "监管复核人员"),
     ("PLATFORM_OPERATOR", "平台运维人员"),
+    ("BUSINESS_LEADER", "业务方向负责人"),
+    ("SYSTEM_SPECIALIST", "单系统业务专员"),
+    ("OWNER_PROJECT_MANAGER", "业务甲方项目经理"),
+    ("SUPERVISOR_ENGINEER", "工程监理工程师"),
+    ("SOFTWARE_DELIVERY", "软件交付工程师"),
 )
 POSITIONS = (
     ("TENANT_LEADER", "甲方负责人"),
@@ -63,6 +113,11 @@ POSITIONS = (
     ("DISPATCHER", "项目调度员"),
     ("REPAIRER", "现场施工人员"),
     ("PLATFORM_ENGINEER", "平台运维工程师"),
+    ("BUSINESS_DIRECTOR", "业务方向负责人"),
+    ("SYSTEM_OWNER", "业务系统负责人"),
+    ("OWNER_PROJECT_MANAGER", "甲方项目经理"),
+    ("SUPERVISOR_ENGINEER", "监理工程师"),
+    ("DELIVERY_ENGINEER", "软件交付工程师"),
 )
 DEMO_INITIAL_PASSWORD = "Demo@123456"
 ROLE_POLICIES = {
@@ -161,6 +216,71 @@ ROLE_POLICIES = {
         ),
         DataScopeType.ALL,
     ),
+    "BUSINESS_LEADER": (
+        (
+            "system:org:view",
+            "system:application:view",
+            "project:view",
+            "project:progress:view",
+            "project:progress:view-all",
+            "project:authorization:explain",
+            "workorder:view",
+        ),
+        DataScopeType.ORG_AND_CHILD,
+    ),
+    "SYSTEM_SPECIALIST": (
+        (
+            "system:org:view",
+            "system:application:view",
+            "project:view",
+            "project:progress:view",
+            "project:progress:view-all",
+            "workorder:view",
+        ),
+        DataScopeType.ORG,
+    ),
+    "OWNER_PROJECT_MANAGER": (
+        (
+            "system:org:view",
+            "system:application:view",
+            "project:view",
+            "project:update",
+            "project:progress:view",
+            "project:authorization:explain",
+            "workorder:view",
+            "workorder:create",
+            "workorder:dispatch",
+            "workorder:comment",
+            "workorder:urge",
+            "workorder:review",
+        ),
+        DataScopeType.ORG_AND_CHILD,
+    ),
+    "SUPERVISOR_ENGINEER": (
+        (
+            "system:org:view",
+            "system:application:view",
+            "project:view",
+            "project:progress:view",
+            "project:authorization:explain",
+            "workorder:view",
+            "workorder:comment",
+            "workorder:review",
+        ),
+        DataScopeType.ORG_AND_CHILD,
+    ),
+    "SOFTWARE_DELIVERY": (
+        (
+            "system:org:view",
+            "system:application:view",
+            "project:view",
+            "project:progress:view",
+            "workorder:view",
+            "workorder:comment",
+            "workorder:attachment",
+        ),
+        DataScopeType.ORG_AND_CHILD,
+    ),
 }
 
 
@@ -180,8 +300,17 @@ class SeedSummary:
     )
 
 
-def seed_iam(service: IAMService) -> SeedSummary:
-    tenant = service.repository.get_tenant_by_code(DEFAULT_TENANT_CODE)
+def seed_iam(
+    service: IAMService,
+    *,
+    city_name: str = "江城市",
+    tenant_name: str | None = None,
+) -> SeedSummary:
+    tenant = (
+        service.repository.get_tenant(service.repository.tenant_id)
+        if service.repository.tenant_id is not None
+        else service.repository.get_tenant_by_code(DEFAULT_TENANT_CODE)
+    )
     if tenant is None:
         from .models import Tenant
 
@@ -192,12 +321,25 @@ def seed_iam(service: IAMService) -> SeedSummary:
         service.repository.add(tenant)
         service.repository.commit()
         service.repository.refresh(tenant)
+    desired_tenant_name = tenant_name
+    if desired_tenant_name is None and tenant.tenant_code == DEFAULT_TENANT_CODE:
+        desired_tenant_name = DEFAULT_TENANT_NAME
+    if desired_tenant_name and tenant.tenant_name != desired_tenant_name:
+        tenant.tenant_name = desired_tenant_name
+        service.repository.commit()
+        service.repository.refresh(tenant)
     if service.repository.tenant_id is None:
         service.repository.tenant_id = tenant.id
     password_hasher = PasswordHasher()
     for code, name, org_type, parent_code, sort_no in ORGANIZATIONS:
         if service.get_organization(code) is None:
-            service.create_organization(code, name, org_type, parent_code, sort_no)
+            service.create_organization(
+                code,
+                name.format(city=city_name),
+                org_type,
+                parent_code,
+                sort_no,
+            )
 
     for username, display_name in USERS:
         user = service.get_user(username)
@@ -240,14 +382,60 @@ def seed_iam(service: IAMService) -> SeedSummary:
             ("PLATFORM_OPERATOR",),
             ("PLATFORM_ENGINEER",),
         ),
+        (
+            "water_drainage_leader",
+            "OWNER_WATER",
+            ("BUSINESS_LEADER",),
+            ("BUSINESS_DIRECTOR",),
+        ),
+        (
+            "water_drainage_leader",
+            "OWNER_DRAINAGE",
+            ("BUSINESS_LEADER",),
+            ("BUSINESS_DIRECTOR",),
+        ),
+        (
+            "dma_specialist",
+            "OWNER_WATER",
+            ("SYSTEM_SPECIALIST",),
+            ("SYSTEM_OWNER",),
+        ),
+        (
+            "hydraulic_specialist",
+            "OWNER_WATER",
+            ("SYSTEM_SPECIALIST",),
+            ("SYSTEM_OWNER",),
+        ),
+        (
+            "owner_pm",
+            "OWNER_WATER",
+            ("OWNER_PROJECT_MANAGER",),
+            ("OWNER_PROJECT_MANAGER",),
+        ),
+        (
+            "supervisor_engineer",
+            "WATER_SUPERVISION",
+            ("SUPERVISOR_ENGINEER",),
+            ("SUPERVISOR_ENGINEER",),
+        ),
+        (
+            "software_delivery",
+            "PLATFORM_DELIVERY",
+            ("SOFTWARE_DELIVERY",),
+            ("DELIVERY_ENGINEER",),
+        ),
     )
     for username, org_code, role_codes, position_codes in assignments:
         membership = service.get_membership(username, org_code)
         if membership is None:
+            secondary_memberships = {
+                ("admin", "PLATFORM"),
+                ("water_drainage_leader", "OWNER_DRAINAGE"),
+            }
             membership = service.add_user_to_organization(
                 username,
                 org_code,
-                is_primary=not (username == "admin" and org_code == "PLATFORM"),
+                is_primary=(username, org_code) not in secondary_memberships,
             )
         current_roles = {link.role.role_code for link in membership.role_links}
         for role_code in role_codes:
@@ -278,16 +466,41 @@ def seed_iam(service: IAMService) -> SeedSummary:
     return SeedSummary()
 
 
+def seed_city_tenants(session) -> tuple[SeedSummary, ...]:
+    """Seed three city tenants with an identical, tenant-local IAM template."""
+    from .models import Tenant
+
+    summaries = []
+    catalog = IAMRepository(session)
+    for tenant_code, tenant_name, city_name in CITY_TENANTS:
+        tenant = catalog.get_tenant_by_code(tenant_code)
+        if tenant is None:
+            tenant = Tenant(tenant_code=tenant_code, tenant_name=tenant_name)
+            catalog.add(tenant)
+            catalog.commit()
+            catalog.refresh(tenant)
+        summaries.append(
+            seed_iam(
+                IAMService(IAMRepository(session, tenant.id)),
+                city_name=city_name,
+                tenant_name=tenant_name,
+            )
+        )
+    return tuple(summaries)
+
+
 def main() -> None:
     database = Database(get_settings().database_url)
     try:
         with database.session_factory() as session:
-            summary = seed_iam(IAMService(IAMRepository(session)))
+            summaries = seed_city_tenants(session)
+            summary = summaries[0]
         print(
             "IAM seed ready: "
-            f"{summary.tenants} tenant, {summary.organizations} organizations, "
-            f"{summary.users} users, "
-            f"{summary.roles} roles, {summary.positions} positions, "
+            f"{len(summaries)} city tenants, "
+            f"{sum(item.organizations for item in summaries)} organizations, "
+            f"{sum(item.users for item in summaries)} users, "
+            f"{summary.roles} roles/tenant, {summary.positions} positions/tenant, "
             f"{summary.permissions} permissions"
         )
     finally:

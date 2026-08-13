@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     debug: bool = False
     database_url: str = "sqlite:///./var/demo.db"
     auth_cookie_name: str = "yf_session"
+    platform_auth_cookie_name: str = "yf_platform_session"
     auth_cookie_secure: bool = False
     auth_session_hours: int = 8
     default_tenant_code: str = "DEMO"

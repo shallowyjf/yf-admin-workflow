@@ -14,7 +14,7 @@ from app.iam.admin_service import (
     OrganizationAdministrationService,
     UpdateOrganizationCommand,
 )
-from app.iam.authorization import PermissionService
+from app.iam.authorization import DataScopeType, PermissionService
 from app.iam.repository import IAMRepository
 from app.iam.seed import DEMO_INITIAL_PASSWORD, seed_iam
 from app.iam.service import IAMService
@@ -103,6 +103,36 @@ def test_non_admin_cannot_manage_organizations(db_session: Session) -> None:
             CreateOrganizationCommand("FORBIDDEN", "越权组织"),
             actor,
         )
+
+
+def test_organization_tree_is_trimmed_by_role_data_scope(
+    db_session: Session,
+) -> None:
+    service, _ = _admin_service(db_session)
+    iam = IAMService(IAMRepository(db_session))
+    iam.create_role("ORG_VIEWER", "组织范围查看人", "BUSINESS")
+    iam.grant_permission("ORG_VIEWER", "system:org:view")
+    iam.set_role_data_scope(
+        "ORG_VIEWER",
+        "system:org:view",
+        DataScopeType.ORG_AND_CHILD,
+    )
+    iam.assign_role("lisi", "PIPE_OPERATION", "ORG_VIEWER")
+    user = iam.get_user("lisi")
+    pipe = iam.get_organization("PIPE_OPERATION")
+    group = iam.get_organization("GROUP")
+    assert user is not None and pipe is not None and group is not None
+
+    actor = IAMAdministrationActor(user.id, pipe.id)
+    visible = service.list_organizations(actor)
+
+    assert {item.org_code for item in visible} == {
+        "PIPE_OPERATION",
+        "INSPECTION_TEAM_1",
+        "INSPECTION_TEAM_2",
+    }
+    with pytest.raises(IAMAdministrationPermissionDenied, match="数据范围"):
+        service.get_organization(group.id, actor)
 
 
 @pytest.fixture()

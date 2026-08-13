@@ -298,6 +298,8 @@ def test_organization_page_crud_and_permission_boundary(
     _login(ui_client, "admin")
     page = ui_client.get("/iam/organizations")
     assert 'data-testid="create-organization"' in page.text
+    assert 'data-testid="organization-tree"' in page.text
+    assert "树节点已由服务端按当前组织与角色数据范围裁剪" in page.text
     created = ui_client.post(
         "/ui/organizations",
         data={
@@ -394,6 +396,11 @@ def test_user_page_lifecycle_and_membership_configuration(
     assert "页面用户（更新）" in result_page.text
     assert "调度员" in result_page.text
     assert "施工处置人员" in result_page.text
+    assert "查看详情" in result_page.text
+    detail_page = ui_client.get(f"/iam/users/{user_id}")
+    assert detail_page.status_code == 200
+    assert 'data-testid="save-memberships"' in detail_page.text
+    assert "组织、角色与岗位" in detail_page.text
     assert ui_client.post(
         f"/ui/users/{user_id}/password",
         data={"new_password": "Changed@123"},
@@ -418,7 +425,7 @@ def test_role_page_lifecycle_and_authorization_matrix(
     page = ui_client.get("/iam/roles")
     assert page.status_code == 200
     assert 'data-testid="create-role"' in page.text
-    assert 'data-testid="save-role-authorization"' in page.text
+    assert 'data-testid="save-role-authorization"' not in page.text
     created = ui_client.post(
         "/ui/roles",
         data={
@@ -431,6 +438,10 @@ def test_role_page_lifecycle_and_authorization_matrix(
     assert created.status_code == 303
     roles = ui_client.get("/api/roles").json()
     role_id = next(item["id"] for item in roles if item["role_code"] == "UI_ROLE")
+    role_detail = ui_client.get(f"/iam/roles/{role_id}")
+    assert role_detail.status_code == 200
+    assert 'data-testid="save-role-authorization"' in role_detail.text
+    assert "挂接组织与用户" in role_detail.text
     with ui_client.app.state.database.session_factory() as session:
         repository = IAMRepository(session)
         permission = repository.get_permission_by_code("workorder:view")
@@ -495,6 +506,9 @@ def test_position_permission_and_audit_pages_complete_iam_configuration(
         for item in ui_client.get("/api/positions").json()
         if item["position_code"] == "UI_POSITION"
     )
+    position_detail = ui_client.get(f"/iam/positions/{position['id']}")
+    assert position_detail.status_code == 200
+    assert "挂接组织与用户" in position_detail.text
     assert ui_client.post(
         f"/ui/positions/{position['id']}/update",
         data={"position_name": "页面岗位（更新）"},

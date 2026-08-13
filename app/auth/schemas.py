@@ -32,6 +32,7 @@ class ApplicationContextResponse(BaseModel):
     id: int
     application_code: str
     application_name: str
+    domain_type: str
 
 
 class ProjectContextResponse(BaseModel):

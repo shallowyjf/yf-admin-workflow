@@ -82,7 +82,16 @@ class UpdateMilestoneCommand:
 class ProjectService:
     CODE_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]{1,79}$")
     STATUSES = frozenset({"PLANNED", "ACTIVE", "SUSPENDED", "ARCHIVED"})
-    PARTY_TYPES = frozenset({"OWNER", "REGULATOR", "CONTRACTOR", "PLATFORM"})
+    PARTY_TYPES = frozenset(
+        {
+            "OWNER",
+            "REGULATOR",
+            "SUPERVISOR",
+            "CONTRACTOR",
+            "SOFTWARE_VENDOR",
+            "PLATFORM",
+        }
+    )
     MILESTONE_STATUSES = frozenset(
         {"NOT_STARTED", "IN_PROGRESS", "DELAYED", "COMPLETED"}
     )

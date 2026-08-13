@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="portal-hero"><div><p class="eyebrow light">CITY OPERATION PORTAL</p><h2>{{ profile.tenant_name }}</h2><p>选择要进入的管理中心或业务驾驶舱。页面入口与业务数据均按当前账号授权生成。</p></div><span>{{ profile.display_name }}</span></section>
+<section class="portal-grid">
+  {% if can_manage_iam %}<a class="portal-card permission" href="/iam/organizations"><span>权限</span><h3>权限管理中心</h3><p>组织树、用户、角色、岗位、权限字典与审计。</p><strong>进入权限中心 →</strong></a>{% endif %}
+  {% if can_view_workorders %}<a class="portal-card workorder" href="/workorders"><span>工单</span><h3>工单中心</h3><p>建单、派单、认领、处理、复核和关闭的流程闭环。</p><strong>进入工单中心 →</strong></a>{% endif %}
+  {% for domain in portal_domains %}<a class="portal-card domain" href="/business-dashboard/{{ domain.code }}"><span>{{ domain.label }}</span><h3>{{ domain.label }}业务驾驶舱</h3><p>{{ domain.description }}</p><small>{{ domain.applications|length }} 个系统 · {{ domain.project_count }} 个可见项目</small><strong>查看驾驶舱 →</strong></a>{% endfor %}
+</section>
+{% endblock %}

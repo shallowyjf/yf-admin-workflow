@@ -17,7 +17,7 @@ from app.iam.dictionary_admin_service import (
 )
 from app.iam.permission_catalog import BUILT_IN_PERMISSION_CODES
 from app.iam.role_admin_service import RoleAdministrationService
-from app.iam.service import IAMService
+from app.iam.service import IAMEntityNotFound, IAMService
 from app.iam.user_admin_service import UserAdministrationService
 from app.notification.service import NotificationService
 from app.operation.service import SavedViewService
@@ -108,16 +108,8 @@ class DashboardService:
     ) -> dict:
         permissions = set(profile.permission_codes)
         navigation = [
-            {"code": "dashboard", "label": "工作台", "href": "/dashboard"},
+            {"code": "portal", "label": "应用导航", "href": "/portal"},
         ]
-        if "project:view" in permissions:
-            navigation.append(
-                {
-                    "code": "lifeline",
-                    "label": "生命线权限结构",
-                    "href": "/lifeline",
-                }
-            )
         if "project:progress:view" in permissions:
             navigation.append(
                 {
@@ -169,6 +161,81 @@ class DashboardService:
             "unread_notifications": unread_notifications,
         }
 
+    @staticmethod
+    def default_landing(profile: AuthProfile) -> str:
+        management_roles = {
+            "SYSTEM_ADMIN",
+            "OWNER_LEADER",
+            "BUSINESS_LEADER",
+            "SYSTEM_SPECIALIST",
+            "OWNER_PROJECT_MANAGER",
+            "SUPERVISOR_ENGINEER",
+            "SOFTWARE_DELIVERY",
+            "PLATFORM_OPERATOR",
+        }
+        return "/portal" if management_roles.intersection(profile.role_codes) else "/workorders"
+
+    def portal(self, profile: AuthProfile) -> dict:
+        permissions = set(profile.permission_codes)
+        domains = []
+        domain_metadata = {
+            "WATER_SUPPLY": ("供水", "DMA 漏损、水力模型与供水工程态势"),
+            "DRAINAGE": ("排水", "防涝设施、排水工程与风险态势"),
+            "GAS": ("燃气", "燃气安全、隐患治理与工程态势"),
+            "HEATING": ("供热", "供热管网、改造工程与运行态势"),
+            "ROAD": ("道路", "道路桥梁、监测建设与风险态势"),
+        }
+        for domain_type in dict.fromkeys(item.domain_type for item in profile.applications):
+            label, description = domain_metadata.get(
+                domain_type, (domain_type, "业务系统与工程项目态势")
+            )
+            applications = [
+                item for item in profile.applications if item.domain_type == domain_type
+            ]
+            domains.append(
+                {
+                    "code": domain_type,
+                    "label": label,
+                    "description": description,
+                    "applications": applications,
+                    "project_count": sum(
+                        project.application_id in {item.id for item in applications}
+                        for project in profile.projects
+                    ),
+                }
+            )
+        return {
+            "portal_domains": domains,
+            "can_manage_iam": any(
+                code in permissions for code in self.SYSTEM_PAGES.values()
+            ),
+            "can_view_workorders": "workorder:view" in permissions,
+        }
+
+    def business_dashboard(self, profile: AuthProfile, domain_type: str) -> dict:
+        domain = domain_type.strip().upper()
+        portal = self.portal(profile)
+        visible = next(
+            (item for item in portal["portal_domains"] if item["code"] == domain),
+            None,
+        )
+        if visible is None:
+            raise PageAccessDenied("当前账号没有该业务方向的系统入口权限")
+        application_ids = {item.id for item in visible["applications"]}
+        projects = [
+            item for item in profile.projects if item.application_id in application_ids
+        ]
+        return {
+            "business_domain": visible,
+            "business_projects": projects,
+            "dashboard_metrics": {
+                "systems": len(visible["applications"]),
+                "projects": len(projects),
+                "online_rate": 98,
+                "open_events": max(2, len(projects) * 3),
+            },
+        }
+
     def dashboard(self, profile: AuthProfile) -> dict:
         actor = self._actor(profile)
         try:
@@ -195,11 +262,15 @@ class DashboardService:
 
     def organizations(self, profile: AuthProfile) -> dict:
         self._require_system_page(profile, "organizations")
-        organizations = self.iam_service.list_organizations()
+        organizations = self.organization_admin_service.list_organizations(
+            self._iam_actor(profile)
+        )
         permissions = set(profile.permission_codes)
         return {
             "organizations": organizations,
+            "organization_tree": self._organization_tree(organizations),
             "organization_codes": {item.id: item.org_code for item in organizations},
+            "organization_scope_label": self._organization_scope_label(profile),
             "organization_capabilities": {
                 "create": "system:org:create" in permissions,
                 "update": "system:org:update" in permissions,
@@ -244,6 +315,11 @@ class DashboardService:
             },
         }
 
+    def user_detail(self, profile: AuthProfile, user_id: int) -> dict:
+        context = self.users(profile)
+        context["user"] = self._find_entity(context["users"], user_id, "用户")
+        return context
+
     def roles(self, profile: AuthProfile) -> dict:
         self._require_system_page(profile, "roles")
         roles = self.iam_service.list_roles()
@@ -263,11 +339,13 @@ class DashboardService:
             }
             for role in roles
         }
+        role_bindings = self._role_bindings(self.iam_service.list_users())
         return {
             "roles": roles,
             "permissions": self.iam_service.list_permissions(),
             "organizations": organizations,
             "authorization_forms": authorization_forms,
+            "role_bindings": role_bindings,
             "role_capabilities": {
                 "create": "system:role:create" in permissions,
                 "update": "system:role:update" in permissions,
@@ -276,11 +354,20 @@ class DashboardService:
             },
         }
 
+    def role_detail(self, profile: AuthProfile, role_id: int) -> dict:
+        context = self.roles(profile)
+        context["role"] = self._find_entity(context["roles"], role_id, "角色")
+        return context
+
     def positions(self, profile: AuthProfile) -> dict:
         self._require_system_page(profile, "positions")
         permissions = set(profile.permission_codes)
+        positions = self.iam_service.list_positions()
         return {
-            "positions": self.iam_service.list_positions(),
+            "positions": positions,
+            "position_bindings": self._position_bindings(
+                self.iam_service.list_users()
+            ),
             "position_capabilities": {
                 "create": "system:position:create" in permissions,
                 "update": "system:position:update" in permissions,
@@ -288,6 +375,13 @@ class DashboardService:
                 "delete": "system:position:delete" in permissions,
             },
         }
+
+    def position_detail(self, profile: AuthProfile, position_id: int) -> dict:
+        context = self.positions(profile)
+        context["position"] = self._find_entity(
+            context["positions"], position_id, "岗位"
+        )
+        return context
 
     def permissions(self, profile: AuthProfile) -> dict:
         self._require_system_page(profile, "permissions")
@@ -450,6 +544,59 @@ class DashboardService:
             profile.active_org_id,
         ):
             raise PageAccessDenied(f"缺少页面权限：{permission_code}")
+
+    def _organization_scope_label(self, profile: AuthProfile) -> str:
+        visible_ids = self.permission_service.organization_scope_ids(
+            profile.user_id,
+            self.SYSTEM_PAGES["organizations"],
+            profile.active_org_id,
+        )
+        return "租户全部组织" if visible_ids is None else "当前角色数据范围"
+
+    @staticmethod
+    def _organization_tree(organizations: list) -> list[dict]:
+        nodes = {
+            item.id: {"organization": item, "children": []}
+            for item in organizations
+        }
+        roots = []
+        for item in organizations:
+            node = nodes[item.id]
+            parent = nodes.get(item.parent_id)
+            if parent is None:
+                roots.append(node)
+            else:
+                parent["children"].append(node)
+        return roots
+
+    @staticmethod
+    def _find_entity(items: list, entity_id: int, label: str):
+        entity = next((item for item in items if item.id == entity_id), None)
+        if entity is None:
+            raise IAMEntityNotFound(f"{label}不存在或不在当前租户中")
+        return entity
+
+    @staticmethod
+    def _role_bindings(users: list) -> dict[int, list[dict]]:
+        result: dict[int, list[dict]] = {}
+        for user in users:
+            for membership in user.memberships:
+                for link in membership.role_links:
+                    result.setdefault(link.role_id, []).append(
+                        {"user": user, "membership": membership}
+                    )
+        return result
+
+    @staticmethod
+    def _position_bindings(users: list) -> dict[int, list[dict]]:
+        result: dict[int, list[dict]] = {}
+        for user in users:
+            for membership in user.memberships:
+                for link in membership.position_links:
+                    result.setdefault(link.position_id, []).append(
+                        {"user": user, "membership": membership}
+                    )
+        return result
 
     @staticmethod
     def _visible_actions(

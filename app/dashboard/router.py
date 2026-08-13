@@ -13,6 +13,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
+from app.auth.platform_service import (
+    PlatformAuthenticationError,
+    PlatformAuthService,
+)
 from app.auth.repository import AuthRepository
 from app.auth.router import get_auth_service
 from app.auth.service import (
@@ -170,6 +174,16 @@ def get_dashboard_service(
     )
 
 
+def get_platform_auth_service(
+    request: Request,
+    session: Annotated[Session, Depends(get_db_session)],
+) -> PlatformAuthService:
+    settings = request.app.state.settings
+    return PlatformAuthService(
+        AuthRepository(session), session_hours=settings.auth_session_hours
+    )
+
+
 def get_page_project_service(
     session: Annotated[Session, Depends(get_db_session)],
     identity: Annotated[PageIdentity, Depends(get_page_identity)],
@@ -243,7 +257,7 @@ def _friendly_error(
         (IAMEntityNotFound, NotificationNotFound, ProjectNotFound, WorkOrderNotFound),
     ):
         code = status.HTTP_404_NOT_FOUND
-        title = "没有找到工单"
+        title = "没有找到记录"
     elif isinstance(
         error,
         (
@@ -272,7 +286,129 @@ def _friendly_error(
 
 @router.get("/", include_in_schema=False)
 def root() -> RedirectResponse:
-    return RedirectResponse("/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/entry", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/platform/login", response_class=HTMLResponse, include_in_schema=False)
+def platform_login_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request=request,
+        name="platform_login.html",
+        context={"request": request, "error": None},
+    )
+
+
+@router.post("/platform/login", include_in_schema=False, response_model=None)
+async def platform_login(
+    request: Request,
+    service: Annotated[PlatformAuthService, Depends(get_platform_auth_service)],
+) -> HTMLResponse | RedirectResponse:
+    values = await _form(request)
+    try:
+        token = service.login(values.get("username", ""), values.get("password", ""))
+    except PlatformAuthenticationError:
+        return templates.TemplateResponse(
+            request=request,
+            name="platform_login.html",
+            context={"request": request, "error": "平台账号或密码错误"},
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+    settings = request.app.state.settings
+    response = RedirectResponse(
+        "/platform/tenants", status_code=status.HTTP_303_SEE_OTHER
+    )
+    response.set_cookie(
+        key=settings.platform_auth_cookie_name,
+        value=token,
+        max_age=settings.auth_session_hours * 60 * 60,
+        httponly=True,
+        secure=settings.auth_cookie_secure,
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+
+@router.get(
+    "/platform/tenants",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+    response_model=None,
+)
+def platform_tenant_selector(
+    request: Request,
+    service: Annotated[PlatformAuthService, Depends(get_platform_auth_service)],
+) -> HTMLResponse | RedirectResponse:
+    settings = request.app.state.settings
+    try:
+        context = service.authenticate(
+            request.cookies.get(settings.platform_auth_cookie_name)
+        )
+    except PlatformAuthenticationError:
+        return RedirectResponse(
+            "/platform/login", status_code=status.HTTP_303_SEE_OTHER
+        )
+    return templates.TemplateResponse(
+        request=request,
+        name="tenant_selector.html",
+        context={
+            "request": request,
+            "platform_context": context,
+            "tenants": service.list_tenants(),
+        },
+    )
+
+
+@router.post(
+    "/platform/tenants/{tenant_id}/enter",
+    include_in_schema=False,
+    response_model=None,
+)
+def enter_city_tenant(
+    tenant_id: int,
+    request: Request,
+    platform_service: Annotated[
+        PlatformAuthService, Depends(get_platform_auth_service)
+    ],
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+) -> RedirectResponse:
+    settings = request.app.state.settings
+    try:
+        platform_service.authenticate(
+            request.cookies.get(settings.platform_auth_cookie_name)
+        )
+        tenant, administrator = platform_service.tenant_administrator(tenant_id)
+        result = auth_service.create_tenant_session(administrator.id, tenant.id)
+    except (PlatformAuthenticationError, AuthenticationError, ActiveOrganizationDenied):
+        return RedirectResponse(
+            "/platform/login", status_code=status.HTTP_303_SEE_OTHER
+        )
+    response = RedirectResponse("/portal", status_code=status.HTTP_303_SEE_OTHER)
+    response.set_cookie(
+        key=settings.auth_cookie_name,
+        value=result.token,
+        max_age=settings.auth_session_hours * 60 * 60,
+        httponly=True,
+        secure=settings.auth_cookie_secure,
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+
+@router.post("/platform/logout", include_in_schema=False)
+def platform_logout(
+    request: Request,
+    service: Annotated[PlatformAuthService, Depends(get_platform_auth_service)],
+) -> RedirectResponse:
+    settings = request.app.state.settings
+    service.logout(request.cookies.get(settings.platform_auth_cookie_name))
+    response = RedirectResponse(
+        "/platform/login", status_code=status.HTTP_303_SEE_OTHER
+    )
+    response.delete_cookie(settings.platform_auth_cookie_name, path="/")
+    response.delete_cookie(settings.auth_cookie_name, path="/")
+    return response
 
 
 @router.get("/login", response_class=HTMLResponse, include_in_schema=False)
@@ -281,6 +417,60 @@ def login_page(request: Request) -> HTMLResponse:
         request=request,
         name="login.html",
         context={"request": request},
+    )
+
+
+@router.get("/entry", include_in_schema=False)
+def role_entry(
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> RedirectResponse:
+    return RedirectResponse(
+        service.default_landing(identity.profile),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.get("/portal", response_class=HTMLResponse, include_in_schema=False)
+def portal_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse:
+    return _page(
+        request,
+        service,
+        identity,
+        "portal.html",
+        "应用导航",
+        "portal",
+        service.portal(identity.profile),
+    )
+
+
+@router.get(
+    "/business-dashboard/{domain_type}",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def business_dashboard_page(
+    domain_type: str,
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse:
+    try:
+        data = service.business_dashboard(identity.profile, domain_type)
+    except PageAccessDenied as error:
+        return _friendly_error(request, service, identity, error)
+    return _page(
+        request,
+        service,
+        identity,
+        "business_dashboard.html",
+        f"{data['business_domain']['label']}业务驾驶舱",
+        "portal",
+        data,
     )
 
 
@@ -298,40 +488,6 @@ def dashboard_page(
         "工作台",
         "dashboard",
         service.dashboard(identity.profile),
-    )
-
-
-@router.get("/lifeline", response_class=HTMLResponse, include_in_schema=False)
-def lifeline_page(
-    request: Request,
-    identity: Annotated[PageIdentity, Depends(get_page_identity)],
-    dashboard_service: Annotated[DashboardService, Depends(get_dashboard_service)],
-    project_service: Annotated[ProjectService, Depends(get_page_project_service)],
-) -> HTMLResponse:
-    try:
-        structure = project_service.structure(
-            ProjectActor(
-                identity.context.current_user_id,
-                identity.context.active_org_id,
-            )
-        )
-    except ProjectPermissionDenied as error:
-        raise PageAccessDenied(str(error)) from error
-    structure.update(
-        {
-            "organizations": dashboard_service.iam_service.list_organizations(),
-            "users": dashboard_service.iam_service.list_users(),
-            "roles": dashboard_service.iam_service.list_roles(),
-        }
-    )
-    return _page(
-        request,
-        dashboard_service,
-        identity,
-        "lifeline.html",
-        "城市生命线权限结构",
-        "lifeline",
-        structure,
     )
 
 
@@ -429,7 +585,7 @@ async def create_project_page(
         )
     except (ProjectPermissionDenied, ProjectValidationError, ProjectConflict, ValueError) as error:
         return _friendly_error(request, dashboard_service, identity, error)
-    return RedirectResponse("/lifeline", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/project-progress", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post(
@@ -466,7 +622,7 @@ async def update_project_page(
         ValueError,
     ) as error:
         return _friendly_error(request, dashboard_service, identity, error)
-    return RedirectResponse("/lifeline", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/project-progress", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post(
@@ -509,7 +665,7 @@ async def replace_project_organizations_page(
         ValueError,
     ) as error:
         return _friendly_error(request, dashboard_service, identity, error)
-    return RedirectResponse("/lifeline", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/project-progress", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post(
@@ -549,7 +705,7 @@ async def replace_project_members_page(
         ValueError,
     ) as error:
         return _friendly_error(request, dashboard_service, identity, error)
-    return RedirectResponse("/lifeline", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/project-progress", status_code=status.HTTP_303_SEE_OTHER)
 
 
 def _iam_page(
@@ -600,6 +756,68 @@ def positions_page(
     service: Annotated[DashboardService, Depends(get_dashboard_service)],
 ) -> HTMLResponse:
     return _iam_page(request, identity, service, "positions", "岗位管理")
+
+
+def _iam_detail_page(
+    request: Request,
+    identity: PageIdentity,
+    service: DashboardService,
+    method: str,
+    entity_id: int,
+    template_name: str,
+    title: str,
+    active_page: str,
+) -> HTMLResponse:
+    try:
+        data = getattr(service, method)(identity.profile, entity_id)
+    except (PageAccessDenied, IAMEntityNotFound) as error:
+        return _friendly_error(request, service, identity, error)
+    return _page(
+        request, service, identity, template_name, title, active_page, data
+    )
+
+
+@router.get("/iam/users/{user_id}", response_class=HTMLResponse, include_in_schema=False)
+def user_detail_page(
+    request: Request,
+    user_id: int,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse:
+    return _iam_detail_page(
+        request, identity, service, "user_detail", user_id,
+        "user_detail.html", "用户详情", "users",
+    )
+
+
+@router.get("/iam/roles/{role_id}", response_class=HTMLResponse, include_in_schema=False)
+def role_detail_page(
+    request: Request,
+    role_id: int,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse:
+    return _iam_detail_page(
+        request, identity, service, "role_detail", role_id,
+        "role_detail.html", "角色详情", "roles",
+    )
+
+
+@router.get(
+    "/iam/positions/{position_id}",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def position_detail_page(
+    request: Request,
+    position_id: int,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    service: Annotated[DashboardService, Depends(get_dashboard_service)],
+) -> HTMLResponse:
+    return _iam_detail_page(
+        request, identity, service, "position_detail", position_id,
+        "position_detail.html", "岗位详情", "positions",
+    )
 
 
 @router.get("/iam/permissions", response_class=HTMLResponse, include_in_schema=False)
@@ -1042,7 +1260,7 @@ async def create_user_page(
 ) -> HTMLResponse | RedirectResponse:
     values = await _form(request)
     try:
-        service.user_admin_service.create(
+        user = service.user_admin_service.create(
             CreateUserCommand(
                 username=values.get("username", ""),
                 display_name=values.get("display_name", ""),
@@ -1057,7 +1275,9 @@ async def create_user_page(
         IAMAdministrationValidationError,
     ) as error:
         return _friendly_error(request, service, identity, error)
-    return RedirectResponse("/iam/users", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        f"/iam/users/{user.id}", status_code=status.HTTP_303_SEE_OTHER
+    )
 
 
 @router.post(
@@ -1087,7 +1307,9 @@ async def update_user_page(
         IAMEntityNotFound,
     ) as error:
         return _friendly_error(request, service, identity, error)
-    return RedirectResponse("/iam/users", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        f"/iam/users/{user_id}", status_code=status.HTTP_303_SEE_OTHER
+    )
 
 
 @router.post(
@@ -1114,7 +1336,9 @@ async def user_status_page(
         IAMEntityNotFound,
     ) as error:
         return _friendly_error(request, service, identity, error)
-    return RedirectResponse("/iam/users", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        f"/iam/users/{user_id}", status_code=status.HTTP_303_SEE_OTHER
+    )
 
 
 @router.post(
@@ -1141,7 +1365,9 @@ async def reset_user_password_page(
         IAMEntityNotFound,
     ) as error:
         return _friendly_error(request, service, identity, error)
-    return RedirectResponse("/iam/users", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        f"/iam/users/{user_id}", status_code=status.HTTP_303_SEE_OTHER
+    )
 
 
 @router.post(
@@ -1185,7 +1411,9 @@ async def replace_user_memberships_page(
         IAMEntityNotFound,
     ) as error:
         return _friendly_error(request, service, identity, error)
-    return RedirectResponse("/iam/users", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        f"/iam/users/{user_id}", status_code=status.HTTP_303_SEE_OTHER
+    )
 
 
 @router.post("/ui/roles", include_in_schema=False, response_model=None)
@@ -1196,7 +1424,7 @@ async def create_role_page(
 ) -> HTMLResponse | RedirectResponse:
     values = await _form(request)
     try:
-        service.role_admin_service.create(
+        role = service.role_admin_service.create(
             CreateRoleCommand(
                 role_code=values.get("role_code", ""),
                 role_name=values.get("role_name", ""),
@@ -1210,7 +1438,9 @@ async def create_role_page(
         IAMAdministrationValidationError,
     ) as error:
         return _friendly_error(request, service, identity, error)
-    return RedirectResponse("/iam/roles", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        f"/iam/roles/{role.id}", status_code=status.HTTP_303_SEE_OTHER
+    )
 
 
 @router.post(
@@ -1240,7 +1470,9 @@ async def update_role_page(
         IAMEntityNotFound,
     ) as error:
         return _friendly_error(request, service, identity, error)
-    return RedirectResponse("/iam/roles", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        f"/iam/roles/{role_id}", status_code=status.HTTP_303_SEE_OTHER
+    )
 
 
 @router.post(
@@ -1267,7 +1499,9 @@ async def role_status_page(
         IAMEntityNotFound,
     ) as error:
         return _friendly_error(request, service, identity, error)
-    return RedirectResponse("/iam/roles", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        f"/iam/roles/{role_id}", status_code=status.HTTP_303_SEE_OTHER
+    )
 
 
 @router.post(
@@ -1326,7 +1560,9 @@ async def replace_role_authorization_page(
         IAMEntityNotFound,
     ) as error:
         return _friendly_error(request, service, identity, error)
-    return RedirectResponse("/iam/roles", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        f"/iam/roles/{role_id}", status_code=status.HTTP_303_SEE_OTHER
+    )
 
 
 @router.post("/ui/positions", include_in_schema=False, response_model=None)
@@ -1337,7 +1573,7 @@ async def create_position_page(
 ) -> HTMLResponse | RedirectResponse:
     values = await _form(request)
     try:
-        service.position_admin_service.create(
+        position = service.position_admin_service.create(
             CreatePositionCommand(
                 position_code=values.get("position_code", ""),
                 position_name=values.get("position_name", ""),
@@ -1350,7 +1586,9 @@ async def create_position_page(
         IAMAdministrationValidationError,
     ) as error:
         return _friendly_error(request, service, identity, error)
-    return RedirectResponse("/iam/positions", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        f"/iam/positions/{position.id}", status_code=status.HTTP_303_SEE_OTHER
+    )
 
 
 @router.post(
@@ -1379,7 +1617,9 @@ async def update_position_page(
         IAMEntityNotFound,
     ) as error:
         return _friendly_error(request, service, identity, error)
-    return RedirectResponse("/iam/positions", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        f"/iam/positions/{position_id}", status_code=status.HTTP_303_SEE_OTHER
+    )
 
 
 @router.post(

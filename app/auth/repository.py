@@ -23,7 +23,7 @@ from app.project.models import (
     UserApplicationAccess,
 )
 
-from .models import AuthSession
+from .models import AuthSession, PlatformSession, PlatformUser
 
 
 class AuthRepository:
@@ -33,6 +33,31 @@ class AuthRepository:
     def get_tenant_by_code(self, tenant_code: str) -> Tenant | None:
         return self.session.scalar(
             select(Tenant).where(Tenant.tenant_code == tenant_code)
+        )
+
+    def get_tenant(self, tenant_id: int) -> Tenant | None:
+        return self.session.get(Tenant, tenant_id)
+
+    def get_user(self, user_id: int) -> User | None:
+        return self.session.get(User, user_id)
+
+    def list_active_tenants(self) -> list[Tenant]:
+        return list(
+            self.session.scalars(
+                select(Tenant).where(Tenant.is_active.is_(True)).order_by(Tenant.id)
+            )
+        )
+
+    def get_platform_user(self, username: str) -> PlatformUser | None:
+        return self.session.scalar(
+            select(PlatformUser).where(PlatformUser.username == username)
+        )
+
+    def get_platform_session(self, token_hash: str) -> PlatformSession | None:
+        return self.session.scalar(
+            select(PlatformSession)
+            .where(PlatformSession.token_hash == token_hash)
+            .options(joinedload(PlatformSession.platform_user))
         )
 
     def get_user_by_username(self, username: str, tenant_id: int) -> User | None:

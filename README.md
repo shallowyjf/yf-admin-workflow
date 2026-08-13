@@ -20,6 +20,7 @@ Copy-Item .env.example .env
 .\.venv\Scripts\python.exe -m alembic upgrade head
 .\.venv\Scripts\python.exe -m app.iam.seed
 .\.venv\Scripts\python.exe -m app.project.seed
+.\.venv\Scripts\python.exe -m app.auth.platform_seed
 .\.venv\Scripts\python.exe -m app.workflow.seed
 .\.venv\Scripts\python.exe -m app.workorder.seed
 ```
@@ -33,9 +34,11 @@ Copy-Item .env.example .env
 访问：
 
 - 健康检查：<http://127.0.0.1:8000/health>
+- 平台 Root 城市入口：<http://127.0.0.1:8000/platform/login>
 - 演示登录页：<http://127.0.0.1:8000/login>
+- 租户应用导航：<http://127.0.0.1:8000/portal>
 - 页面工作台：<http://127.0.0.1:8000/dashboard>
-- 城市生命线权限结构：<http://127.0.0.1:8000/lifeline>
+- 组织权限树：<http://127.0.0.1:8000/iam/organizations>
 - 项目进度驾驶舱：<http://127.0.0.1:8000/project-progress>
 - OpenAPI：<http://127.0.0.1:8000/docs>
 
@@ -63,16 +66,24 @@ Copy-Item .env.example .env
 
 ## 页面演示
 
+完整入口流程：平台 Root 使用 `root / Root@123456` 登录，先选择江城市、海州市或云州市，再以该城市租户管理员身份进入应用导航。租户管理员可导航到权限中心、工单中心，以及按真实系统授权生成的供水、排水、燃气、供热、道路静态驾驶舱。普通工程人员直接从 `/login` 登录，默认落到工单中心。
+
 访问登录页后，可使用以下统一初始密码 `Demo@123456`：
 
 - `admin`：查看组织、用户、角色、岗位、权限等系统视图；
-- `owner_leader`：查看五类生命线系统的全部项目结构；
+- `owner_leader`：查看当前城市获授权的全部业务系统与项目；
+- `water_drainage_leader`：查看供水 DMA、供水水力模型和排水三个系统及项目；
+- `dma_specialist`：只查看供水 DMA 系统及对应项目；
+- `hydraulic_specialist`：只查看供水水力模型系统及对应项目；
+- `owner_pm`：供水甲方项目经理；
+- `supervisor_engineer`：供水监理工程师；
+- `software_delivery`：软件供应商交付工程师；
 - `wangwu`：创建、提交、派单、复核和关闭工单；
 - `regulator`：查看监管项目并执行复核；
 - `lisi`：查看本人参加的供水、排水、供热项目，认领工单并提交处理结果；
 - `platform_ops`：查看平台运维范围内的项目与审计信息。
 
-页面提供登录、工作台、城市生命线权限结构、六个 IAM 管理与审计视图、工单列表、工单详情和我的任务。组织、用户、角色、岗位和权限均已形成配置闭环；生命线页面展示“系统—项目—参与组织—项目成员角色—权限矩阵”。导航和动作按钮由服务层按有效权限计算，隐藏按钮不替代接口二次鉴权。
+页面提供平台城市选择、租户应用导航、业务驾驶舱、组织权限树、用户/角色/岗位列表及详情、IAM 管理与审计视图、项目进度、工单列表、工单详情和我的任务。组织树由服务端按当前角色数据范围裁剪；系统入口、项目成员和组织角色共同形成“城市租户—业务系统—工程项目—实体组织”的授权闭环。导航和动作按钮由服务层按有效权限计算，隐藏按钮不替代接口二次鉴权。
 
 ## V0.1 文档
 
@@ -83,6 +94,6 @@ Copy-Item .env.example .env
 
 ## 当前边界
 
-V0.1 已形成组织、用户、角色、岗位、权限、数据范围和 IAM 审计配置闭环，并可执行标准 DMA 工单闭环。I19 增加租户隔离；I20 增加五类生命线系统与工程项目；I21 增加系统入口和项目授权；I22 将工单流程纳入项目边界；I23 增加演示级里程碑与多系统项目进度驾驶舱。它仍是本地 Demo：实时数据汇聚、空间资源权限、认证安全加固、授权治理、对象存储/外部通知、不可篡改审计和生产运维属于真实上线前置范围。
+V0.1 已形成组织、用户、角色、岗位、权限、数据范围和 IAM 审计配置闭环，并可执行标准 DMA 工单闭环。城市按租户隔离，业务方向由系统 `domain_type` 分类，系统入口逐用户授权，项目再叠加参与组织和项目成员角色；同一供水业务下的 DMA 与水力模型可独立授权。它仍是本地 Demo：实时数据汇聚、空间资源权限、认证安全加固、授权治理、对象存储/外部通知、不可篡改审计和生产运维属于真实上线前置范围。
 
-Demo 租户编码为 `DEMO`；用户为 `admin`、`owner_leader`、`wangwu`、`regulator`、`zhangsan`、`lisi`、`zhaoliu`、`platform_ops`，初始密码统一为 `Demo@123456`，仅限本地演示。完整需求见 `docs/PERMISSION_WORKORDER_REQUIREMENTS.md`，本轮验收见 `docs/iterations/I23.md`，后续路线见 `docs/iterations/ROADMAP_I20_I25.md`。
+Demo 城市租户编码为 `DEMO`（江城市）、`CITY_HAIZHOU`（海州市）、`CITY_YUNZHOU`（云州市），初始密码统一为 `Demo@123456`，仅限本地演示。完整账号与授权矩阵见 `docs/PERMISSION_WORKORDER_REQUIREMENTS.md`。

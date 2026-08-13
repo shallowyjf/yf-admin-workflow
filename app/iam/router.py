@@ -101,7 +101,7 @@ def organization_tree(
     roots = []
     for organization in organizations:
         node = nodes[organization.id]
-        if organization.parent_id is None:
+        if organization.parent_id is None or organization.parent_id not in nodes:
             roots.append(node)
         else:
             nodes[organization.parent_id].children.append(node)
