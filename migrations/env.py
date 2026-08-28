@@ -6,6 +6,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 import app.auth.models  # noqa: F401
+import app.data_permission.models  # noqa: F401
 import app.iam.models  # noqa: F401
 import app.notification.models  # noqa: F401
 import app.operation.models  # noqa: F401

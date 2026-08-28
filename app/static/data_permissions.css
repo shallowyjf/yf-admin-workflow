@@ -1,0 +1,14 @@
+.portal-card.data{border-top:4px solid #6675d8}
+.data-hero{margin-bottom:20px;background:linear-gradient(115deg,#243b6b,#5160b6)}
+.app-role-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.app-role-grid article{display:flex;flex-direction:column;gap:6px;padding:16px;border:1px solid var(--line);border-radius:11px;background:#f8fafc}
+.app-role-grid span,.app-role-grid small{color:var(--muted);font-size:12px}
+.stage{display:inline-flex;padding:4px 8px;border-radius:99px;background:#eef1f5;color:#526177;font-size:11px;font-weight:700}
+.stage-model_result{background:#fbeaea;color:var(--danger)}
+.stage-processed,.stage-acquired{background:var(--teal-soft);color:#08736d}
+.permission-chain{display:flex;align-items:center;justify-content:center;gap:12px;overflow:auto}
+.permission-chain div{min-width:145px;display:flex;flex-direction:column;gap:5px;padding:14px;border:1px solid var(--line);border-radius:10px;background:#f8fafc}
+.permission-chain small{color:var(--muted);font-size:10px}
+.permission-chain i{color:var(--teal);font-style:normal;font-weight:800}
+.permission-chain .decision{background:var(--teal-soft);border-color:#b7e4de}
+@media(max-width:900px){.app-role-grid{grid-template-columns:1fr}.permission-chain{justify-content:flex-start}}

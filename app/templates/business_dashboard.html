@@ -30,7 +30,7 @@
     <section class="panel gis-layer-panel">
       <div class="panel-head"><div><p class="eyebrow">MAP LAYERS</p><h2>专题图层</h2></div></div>
       {% for layer in gis_profile.layers %}<div class="gis-layer"><i></i><span>{{ layer }}</span><em>已加载</em></div>{% endfor %}
-      <div class="gis-systems"><small>已授权业务系统</small>{% for application in business_domain.applications %}<strong>{{ application.application_name }}</strong>{% endfor %}</div>
+      <div class="gis-systems"><small>已授权业务系统</small>{% for application in business_domain.applications %}<strong>{{ application.application_name }} <a href="/data-resources?application_id={{ application.id }}">数据权限 →</a></strong>{% endfor %}</div>
     </section>
 
     <section class="panel gis-event-panel">

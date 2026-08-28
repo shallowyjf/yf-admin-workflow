@@ -110,6 +110,10 @@ ROLES = (
     ("OWNER_PROJECT_MANAGER", "业务甲方项目经理"),
     ("SUPERVISOR_ENGINEER", "工程监理工程师"),
     ("SOFTWARE_DELIVERY", "软件交付工程师"),
+    ("DATA_MANAGER", "应用数据管理员"),
+    ("DATA_VIEWER", "应用数据查看者"),
+    ("DATA_STEWARD", "采集处理数据专员"),
+    ("MODEL_ANALYST", "模型分析人员"),
 )
 POSITIONS = (
     ("TENANT_LEADER", "甲方负责人"),
@@ -285,6 +289,44 @@ ROLE_POLICIES = {
             "workorder:attachment",
         ),
         DataScopeType.ORG_AND_CHILD,
+    ),
+    "DATA_MANAGER": (
+        (
+            "data:space:view",
+            "data:space:manage",
+            "data:resource:view",
+            "data:resource:manage",
+            "data:resource:query",
+            "data:authorization:explain",
+        ),
+        DataScopeType.ORG,
+    ),
+    "DATA_VIEWER": (
+        (
+            "data:space:view",
+            "data:resource:view",
+            "data:resource:query",
+            "data:authorization:explain",
+        ),
+        DataScopeType.ORG,
+    ),
+    "DATA_STEWARD": (
+        (
+            "data:space:view",
+            "data:resource:view",
+            "data:resource:query",
+            "data:authorization:explain",
+        ),
+        DataScopeType.ORG,
+    ),
+    "MODEL_ANALYST": (
+        (
+            "data:space:view",
+            "data:resource:view",
+            "data:resource:query",
+            "data:authorization:explain",
+        ),
+        DataScopeType.ORG,
     ),
 }
 

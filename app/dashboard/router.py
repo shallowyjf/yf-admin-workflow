@@ -29,6 +29,8 @@ from app.auth.service import (
     AuthSessionRevocationService,
     RequestContext,
 )
+from app.data_permission.repository import DataPermissionRepository
+from app.data_permission.service import DataActor, DataPermissionService, resource_item
 from app.db.dependencies import get_db_session
 from app.iam.admin_service import (
     CreateOrganizationCommand,
@@ -191,6 +193,17 @@ def get_page_project_service(
     iam_repository = IAMRepository(session, identity.context.tenant_id)
     return ProjectService(
         ProjectRepository(session, identity.context.tenant_id),
+        PermissionService(iam_repository),
+    )
+
+
+def get_page_data_permission_service(
+    session: Annotated[Session, Depends(get_db_session)],
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+) -> DataPermissionService:
+    iam_repository = IAMRepository(session, identity.context.tenant_id)
+    return DataPermissionService(
+        DataPermissionRepository(session, identity.context.tenant_id),
         PermissionService(iam_repository),
     )
 
@@ -410,6 +423,37 @@ def portal_page(
         "应用导航",
         "portal",
         service.portal(identity.profile),
+    )
+
+
+@router.get("/data-resources", response_class=HTMLResponse, include_in_schema=False)
+def data_resources_page(
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    dashboard_service: Annotated[DashboardService, Depends(get_dashboard_service)],
+    data_service: Annotated[
+        DataPermissionService, Depends(get_page_data_permission_service)
+    ],
+    application_id: int | None = None,
+) -> HTMLResponse:
+    actor = DataActor(identity.profile.user_id, identity.profile.active_org_id)
+    resources = data_service.list_resources(actor, application_id=application_id)
+    grants = data_service.repository.list_user_grants(
+        identity.profile.user_id, application_id
+    )
+    return _page(
+        request,
+        dashboard_service,
+        identity,
+        "data_resources.html",
+        "数据资源权限",
+        "data-resources",
+        {
+            "resources": [resource_item(item) for item in resources],
+            "data_spaces": data_service.list_visible_spaces(actor, application_id),
+            "application_roles": grants,
+            "selected_application_id": application_id,
+        },
     )
 
 

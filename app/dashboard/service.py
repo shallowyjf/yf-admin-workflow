@@ -118,6 +118,14 @@ class DashboardService:
                     "href": "/project-progress",
                 }
             )
+        if profile.applications:
+            navigation.append(
+                {
+                    "code": "data-resources",
+                    "label": "数据资源权限",
+                    "href": "/data-resources",
+                }
+            )
         if "workorder:view" in permissions:
             navigation.append({"code": "workorders", "label": "工单中心", "href": "/workorders"})
         navigation.append({"code": "tasks", "label": "我的任务", "href": "/tasks/mine"})
@@ -204,6 +212,7 @@ class DashboardService:
             "portal_domains": domains,
             "can_manage_iam": any(code in permissions for code in self.SYSTEM_PAGES.values()),
             "can_view_workorders": "workorder:view" in permissions,
+            "can_view_data_resources": bool(profile.applications),
         }
 
     def business_dashboard(self, profile: AuthProfile, domain_type: str) -> dict:

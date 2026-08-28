@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero-panel data-hero">
+  <div><p class="eyebrow light">I24 · GOVERNED DATA</p><h2>系统数据权限资源目录</h2><p>入口权限、应用级角色、操作权限与资源策略四层同时通过，才能看到资源。</p></div>
+  <a class="button light" href="/docs#/data-permissions">查看配置 API</a>
+</section>
+
+<section class="stats-grid">
+  <article class="stat-card"><span>可见数据空间</span><strong>{{ data_spaces|length }}</strong><small>空间本身不自动赋予资源权限</small></article>
+  <article class="stat-card"><span>可见数据资源</span><strong>{{ resources|length }}</strong><small>按当前用户实时求交集</small></article>
+  <article class="stat-card"><span>应用级角色</span><strong>{{ application_roles|length }}</strong><small>同一人在不同系统可承担不同职责</small></article>
+  <article class="stat-card accent"><span>默认策略</span><strong>DENY</strong><small>显式拒绝优先于允许</small></article>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><div><p class="eyebrow">APPLICATION ROLES</p><h2>当前账号的应用级角色</h2></div></div>
+  <div class="app-role-grid">
+    {% for grant in application_roles %}
+    <article><span>{{ grant.tenant_application.application.application_name }}</span><strong>{{ grant.role.role_name }}</strong><small>{{ grant.membership.organization.org_name }} · {{ grant.role.role_code }}</small></article>
+    {% else %}<div class="empty">尚未配置应用级角色，因此没有任何数据资源访问权。</div>{% endfor %}
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><div><p class="eyebrow">AUTHORIZED RESOURCES</p><h2>当前可见资源</h2></div><small>模型结果不会沿数据血缘自动继承权限</small></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>资源</th><th>系统 / 数据空间</th><th>类型</th><th>衍生阶段</th><th>敏感级别</th><th>授权解释</th></tr></thead>
+    <tbody>
+      {% for resource in resources %}<tr>
+        <td><strong>{{ resource.resource_name }}</strong><span class="cell-sub"><code>{{ resource.resource_key }}</code></span></td>
+        <td>{{ resource.application_name }}<span class="cell-sub">{{ resource.space_name }}</span></td>
+        <td><span class="status">{{ resource.resource_type }}</span></td>
+        <td><span class="stage stage-{{ resource.derivation_stage|lower }}">{{ resource.derivation_stage }}</span></td>
+        <td>{{ resource.sensitivity_level }}</td>
+        <td><a href="/api/data-permissions/resources/{{ resource.id }}/authorization-explain">查看决策链 →</a></td>
+      </tr>{% else %}<tr><td colspan="6" class="empty">当前账号未通过任何资源的完整授权链。</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</section>
+
+<section class="panel permission-chain">
+  <div><strong>① 系统入口</strong><small>sys_user_application</small></div><i>→</i>
+  <div><strong>② 应用级角色</strong><small>iam_application_role_grant</small></div><i>→</i>
+  <div><strong>③ 操作权限</strong><small>sys_role_permission</small></div><i>→</i>
+  <div><strong>④ 资源策略</strong><small>ALLOW / DENY</small></div><i>→</i>
+  <div class="decision"><strong>访问决策</strong><small>DENY 优先、默认拒绝</small></div>
+</section>
+{% endblock %}

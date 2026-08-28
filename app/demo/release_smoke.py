@@ -13,6 +13,8 @@ from sqlalchemy import inspect
 
 from app.auth.repository import AuthRepository
 from app.auth.service import AuthSessionRevocationService
+from app.data_permission.repository import DataPermissionRepository
+from app.data_permission.seed import seed_data_permissions
 from app.db.session import Database
 from app.demo.dma_workflow_demo import run_dma_demo
 from app.iam.admin_service import IAMAdministrationActor
@@ -56,6 +58,8 @@ class ReleaseSmokeResult:
     audited_entities: tuple[str, ...]
     lifeline_systems: int
     lifeline_projects: int
+    data_spaces: int
+    data_resources: int
     dma_final_status: str
     dma_timeline: tuple[str, ...]
 
@@ -79,6 +83,10 @@ def run_release_smoke(database_url: str) -> ReleaseSmokeResult:
             seed_iam(iam_service)
             project_summary = seed_projects(
                 ProjectRepository(session, repository.require_tenant_id()),
+                iam_service,
+            )
+            data_summary = seed_data_permissions(
+                DataPermissionRepository(session, repository.require_tenant_id()),
                 iam_service,
             )
             workflow_repository = WorkflowRepository(session)
@@ -182,6 +190,8 @@ def run_release_smoke(database_url: str) -> ReleaseSmokeResult:
             audited_entities=audited_entities,
             lifeline_systems=project_summary.applications,
             lifeline_projects=project_summary.projects,
+            data_spaces=data_summary.data_spaces,
+            data_resources=data_summary.resources,
             dma_final_status=dma.final_status,
             dma_timeline=dma.timeline_actions,
         )

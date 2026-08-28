@@ -14,6 +14,12 @@
 | City Lifeline | `PUT /api/lifeline/projects/{id}/members` | 原子替换项目成员与项目角色 |
 | City Lifeline | `GET /api/lifeline/projects/{id}/authorization-explain` | 解释用户项目授权链 |
 | City Lifeline | `PUT /api/lifeline/users/{id}/applications` | 配置用户生命线系统入口 |
+| Data permission | `GET /api/data-permissions/spaces` | 只返回当前账号通过完整授权链的数据空间 |
+| Data permission | `GET /api/data-permissions/resources`、`GET /api/data-permissions/resources/{id}` | 按系统、操作过滤可访问资源及资源详情 |
+| Data permission | `GET /api/data-permissions/resources/{id}/authorization-explain` | 返回入口、应用角色、操作权限、ALLOW/DENY 与最终决策 |
+| Data permission | `POST /api/data-permissions/spaces`、`POST /api/data-permissions/resources` | 管理员创建数据空间与资源目录 |
+| Data permission | `PUT /api/data-permissions/applications/{id}/roles` | 给组织成员配置系统内角色 |
+| Data permission | `POST /api/data-permissions/resources/{id}/policies` | 配置角色级资源 ALLOW/DENY 策略 |
 | Auth | `POST /auth/active-application`、`POST /auth/active-project` | 切换活动生命线系统和工程项目 |
 | Organization | `GET/POST /api/orgs` | 列表、新增 |
 | Organization | `GET /api/orgs/tree` | 组织树 |

@@ -1,6 +1,6 @@
 # 统一权限与流程工单平台 Python Demo
 
-这是正式系统前的可运行架构原型，用于逐轮验证 SaaS 租户、城市生命线多系统、工程项目数据权限、IAM、CandidateResolver、WorkflowTask 与 WorkOrder 的领域边界。当前代码已完成 **I23：演示级项目进度驾驶舱**。
+这是正式系统前的可运行架构原型，用于逐轮验证 SaaS 租户、城市生命线多系统、工程项目数据权限、IAM、CandidateResolver、WorkflowTask 与 WorkOrder 的领域边界。当前代码已完成 **I24：应用级角色与系统数据权限基础**。
 
 ## 环境
 
@@ -20,6 +20,7 @@ Copy-Item .env.example .env
 .\.venv\Scripts\python.exe -m alembic upgrade head
 .\.venv\Scripts\python.exe -m app.iam.seed
 .\.venv\Scripts\python.exe -m app.project.seed
+.\.venv\Scripts\python.exe -m app.data_permission.seed
 .\.venv\Scripts\python.exe -m app.auth.platform_seed
 .\.venv\Scripts\python.exe -m app.workflow.seed
 .\.venv\Scripts\python.exe -m app.workorder.seed
@@ -39,6 +40,7 @@ Copy-Item .env.example .env
 - 页面工作台：<http://127.0.0.1:8000/dashboard>
 - 组织权限树：<http://127.0.0.1:8000/iam/organizations>
 - 项目进度驾驶舱：<http://127.0.0.1:8000/project-progress>
+- 数据资源权限：<http://127.0.0.1:8000/data-resources>
 - OpenAPI：<http://127.0.0.1:8000/docs>
 
 ## 回归测试与质量检查
