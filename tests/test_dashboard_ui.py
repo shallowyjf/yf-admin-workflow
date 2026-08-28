@@ -46,7 +46,15 @@ def test_login_and_authentication_redirect(ui_client: TestClient) -> None:
     assert response.headers["location"] == "/login?next=/dashboard"
     login = ui_client.get("/login")
     assert login.status_code == 200
-    assert "登录协同中枢" in login.text
+    assert "统一登录中心" in login.text
+    assert "租户编码" not in login.text
+    assert "location.href = payload.next_path" in login.text
+    assert "new URLSearchParams(location.search)" not in login.text
+
+    _login(ui_client, "admin")
+    dashboard = ui_client.get("/dashboard")
+    assert 'data-testid="current-login-user"' in dashboard.text
+    assert "@admin" in dashboard.text
 
 
 def test_admin_can_open_all_ten_core_views(ui_client: TestClient) -> None:
@@ -299,7 +307,9 @@ def test_organization_page_crud_and_permission_boundary(
     page = ui_client.get("/iam/organizations")
     assert 'data-testid="create-organization"' in page.text
     assert 'data-testid="organization-tree"' in page.text
-    assert "树节点已由服务端按当前组织与角色数据范围裁剪" in page.text
+    assert 'data-testid="organization-detail"' in page.text
+    assert 'data-selected-organization-id="' in page.text
+    assert "左侧选择组织，右侧查看或维护组织明细" in page.text
     created = ui_client.post(
         "/ui/organizations",
         data={
@@ -314,6 +324,15 @@ def test_organization_page_crud_and_permission_boundary(
     assert created.status_code == 303
     organizations = ui_client.get("/api/orgs").json()
     organization_id = next(item["id"] for item in organizations if item["org_code"] == "UI_TEAM")
+    assert created.headers["location"] == (
+        f"/iam/organizations?organization_id={organization_id}"
+    )
+    selected_page = ui_client.get(
+        f"/iam/organizations?organization_id={organization_id}"
+    )
+    assert f'data-selected-organization-id="{organization_id}"' in selected_page.text
+    assert "页面验收班组" in selected_page.text
+    assert "PIPE_OPERATION" in selected_page.text
     updated = ui_client.post(
         f"/ui/organizations/{organization_id}/update",
         data={
@@ -325,7 +344,12 @@ def test_organization_page_crud_and_permission_boundary(
         follow_redirects=False,
     )
     assert updated.status_code == 303
-    assert "页面验收班组（更新）" in ui_client.get("/iam/organizations").text
+    assert updated.headers["location"] == (
+        f"/iam/organizations?organization_id={organization_id}"
+    )
+    assert "页面验收班组（更新）" in ui_client.get(
+        f"/iam/organizations?organization_id={organization_id}"
+    ).text
     assert ui_client.post(
         f"/ui/organizations/{organization_id}/status",
         data={"is_active": "false"},

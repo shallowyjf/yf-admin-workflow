@@ -269,8 +269,9 @@ def test_lifeline_page_is_removed_and_project_actions_return_to_progress(
     assert page.status_code == 404
     progress_page = client.get("/project-progress")
     assert progress_page.status_code == 200
-    assert 'id="active-application"' in progress_page.text
-    assert 'id="active-project"' in progress_page.text
+    assert 'id="active-application"' not in progress_page.text
+    assert 'id="active-project"' not in progress_page.text
+    assert "城市生命线工程项目进度总览" in progress_page.text
 
     response = client.post(
         "/ui/projects",

@@ -51,6 +51,7 @@ class User(IdTimestampMixin, Base):
         server_default=text("1"),
     )
     username: Mapped[str] = mapped_column(String(80), nullable=False)
+    login_name: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
     display_name: Mapped[str] = mapped_column(String(120), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     phone: Mapped[str | None] = mapped_column(String(40))

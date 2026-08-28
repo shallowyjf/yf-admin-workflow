@@ -136,24 +136,30 @@ COMMON_MEMBERS = (
 
 PROJECT_STAKEHOLDERS = {
     "WS_NETWORK_RENEWAL": (
+        ("water_manager", "OWNER_WATER", "BUSINESS_LEADER"),
         ("owner_pm", "OWNER_WATER", "OWNER_PROJECT_MANAGER"),
         ("supervisor_engineer", "WATER_SUPERVISION", "SUPERVISOR_ENGINEER"),
         ("software_delivery", "PLATFORM_DELIVERY", "SOFTWARE_DELIVERY"),
     ),
     "WS_HYDRAULIC_MODEL": (
+        ("water_manager", "OWNER_WATER", "BUSINESS_LEADER"),
         ("supervisor_engineer", "WATER_SUPERVISION", "SUPERVISOR_ENGINEER"),
         ("software_delivery", "PLATFORM_DELIVERY", "SOFTWARE_DELIVERY"),
     ),
     "DR_FLOOD_CONTROL": (
+        ("drainage_manager", "OWNER_DRAINAGE", "BUSINESS_LEADER"),
         ("software_delivery", "PLATFORM_DELIVERY", "SOFTWARE_DELIVERY"),
     ),
     "GAS_SAFETY_UPGRADE": (
+        ("gas_manager", "OWNER_GAS", "BUSINESS_LEADER"),
         ("software_delivery", "PLATFORM_DELIVERY", "SOFTWARE_DELIVERY"),
     ),
     "HEAT_PIPE_RENOVATION": (
+        ("heating_manager", "OWNER_HEATING", "BUSINESS_LEADER"),
         ("software_delivery", "PLATFORM_DELIVERY", "SOFTWARE_DELIVERY"),
     ),
     "ROAD_BRIDGE_MONITORING": (
+        ("road_manager", "OWNER_ROAD", "BUSINESS_LEADER"),
         ("software_delivery", "PLATFORM_DELIVERY", "SOFTWARE_DELIVERY"),
     ),
 }
@@ -168,6 +174,11 @@ USER_APPLICATIONS = {
     "lisi": ("WATER_SUPPLY", "DRAINAGE", "HEATING"),
     "zhaoliu": ("WATER_SUPPLY", "GAS", "ROAD"),
     "water_drainage_leader": ("WATER_SUPPLY", "WATER_HYDRAULIC", "DRAINAGE"),
+    "water_manager": ("WATER_SUPPLY", "WATER_HYDRAULIC"),
+    "drainage_manager": ("DRAINAGE",),
+    "gas_manager": ("GAS",),
+    "heating_manager": ("HEATING",),
+    "road_manager": ("ROAD",),
     "dma_specialist": ("WATER_SUPPLY",),
     "hydraulic_specialist": ("WATER_HYDRAULIC",),
     "owner_pm": ("WATER_SUPPLY",),

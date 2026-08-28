@@ -10,6 +10,7 @@ from app.db.dependencies import get_db_session
 from app.iam.authorization import PermissionService
 from app.iam.repository import IAMRepository
 
+from .platform_service import PlatformAuthenticationError, PlatformAuthService
 from .repository import AuthRepository
 from .schemas import (
     ActiveApplicationRequest,
@@ -17,6 +18,7 @@ from .schemas import (
     ActiveProjectRequest,
     LoginRequest,
     MeResponse,
+    UnifiedLoginResponse,
 )
 from .service import (
     ActiveApplicationDenied,
@@ -42,6 +44,16 @@ def get_auth_service(
         PermissionService(iam_repository),
         session_hours=settings.auth_session_hours,
         default_tenant_code=settings.default_tenant_code,
+    )
+
+
+def get_platform_auth_service(
+    request: Request,
+    session: Annotated[Session, Depends(get_db_session)],
+) -> PlatformAuthService:
+    settings: Settings = request.app.state.settings
+    return PlatformAuthService(
+        AuthRepository(session), session_hours=settings.auth_session_hours
     )
 
 
@@ -75,7 +87,6 @@ def login(
         result = service.login(
             command.username,
             command.password,
-            command.tenant_code,
         )
     except AuthenticationError as error:
         raise HTTPException(
@@ -96,7 +107,65 @@ def login(
         samesite="lax",
         path="/",
     )
+    response.delete_cookie(settings.platform_auth_cookie_name, path="/")
     return _profile_response(result.profile)
+
+
+@router.post("/unified-login", response_model=UnifiedLoginResponse)
+def unified_login(
+    command: LoginRequest,
+    response: Response,
+    request: Request,
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+    platform_service: Annotated[
+        PlatformAuthService, Depends(get_platform_auth_service)
+    ],
+) -> UnifiedLoginResponse:
+    settings: Settings = request.app.state.settings
+    if platform_service.is_platform_identity(command.username):
+        try:
+            token = platform_service.login(command.username, command.password)
+        except PlatformAuthenticationError as error:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="invalid username or password",
+            ) from error
+        response.set_cookie(
+            key=settings.platform_auth_cookie_name,
+            value=token,
+            max_age=settings.auth_session_hours * 60 * 60,
+            httponly=True,
+            secure=settings.auth_cookie_secure,
+            samesite="lax",
+            path="/",
+        )
+        response.delete_cookie(settings.auth_cookie_name, path="/")
+        return UnifiedLoginResponse(
+            identity_type="PLATFORM_ROOT", next_path="/platform/tenants"
+        )
+    try:
+        result = auth_service.login(command.username, command.password)
+    except AuthenticationError as error:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid username or password",
+        ) from error
+    except ActiveOrganizationDenied as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(error),
+        ) from error
+    response.set_cookie(
+        key=settings.auth_cookie_name,
+        value=result.token,
+        max_age=settings.auth_session_hours * 60 * 60,
+        httponly=True,
+        secure=settings.auth_cookie_secure,
+        samesite="lax",
+        path="/",
+    )
+    response.delete_cookie(settings.platform_auth_cookie_name, path="/")
+    return UnifiedLoginResponse(identity_type="TENANT_USER", next_path="/entry")
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

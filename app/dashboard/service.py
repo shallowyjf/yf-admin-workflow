@@ -119,22 +119,14 @@ class DashboardService:
                 }
             )
         if "workorder:view" in permissions:
-            navigation.append(
-                {"code": "workorders", "label": "工单中心", "href": "/workorders"}
-            )
-        navigation.append(
-            {"code": "tasks", "label": "我的任务", "href": "/tasks/mine"}
-        )
+            navigation.append({"code": "workorders", "label": "工单中心", "href": "/workorders"})
+        navigation.append({"code": "tasks", "label": "我的任务", "href": "/tasks/mine"})
         notifications = self.notification_service.list_for_user(profile.user_id)
-        unread_notifications = sum(
-            item.status == "UNREAD" for item in notifications
-        )
+        unread_notifications = sum(item.status == "UNREAD" for item in notifications)
         navigation.append(
             {
                 "code": "notifications",
-                "label": f"通知 ({unread_notifications})"
-                if unread_notifications
-                else "通知",
+                "label": f"通知 ({unread_notifications})" if unread_notifications else "通知",
                 "href": "/notifications",
             }
         )
@@ -163,6 +155,10 @@ class DashboardService:
 
     @staticmethod
     def default_landing(profile: AuthProfile) -> str:
+        if "BUSINESS_LEADER" in profile.role_codes:
+            domains = {item.domain_type for item in profile.applications}
+            if len(domains) == 1:
+                return f"/business-dashboard/{domains.pop()}"
         management_roles = {
             "SYSTEM_ADMIN",
             "OWNER_LEADER",
@@ -179,11 +175,11 @@ class DashboardService:
         permissions = set(profile.permission_codes)
         domains = []
         domain_metadata = {
-            "WATER_SUPPLY": ("供水", "DMA 漏损、水力模型与供水工程态势"),
-            "DRAINAGE": ("排水", "防涝设施、排水工程与风险态势"),
-            "GAS": ("燃气", "燃气安全、隐患治理与工程态势"),
-            "HEATING": ("供热", "供热管网、改造工程与运行态势"),
-            "ROAD": ("道路", "道路桥梁、监测建设与风险态势"),
+            "WATER_SUPPLY": ("供水", "DMA 漏损、水力模型与供水设施 GIS 态势"),
+            "DRAINAGE": ("排水", "防涝设施、泵站与积水风险 GIS 态势"),
+            "GAS": ("燃气", "燃气管网、阀井与安全隐患 GIS 态势"),
+            "HEATING": ("供热", "热力管网、换热站与运行参数 GIS 态势"),
+            "ROAD": ("道路", "道路桥梁、监测设施与风险 GIS 态势"),
         }
         for domain_type in dict.fromkeys(item.domain_type for item in profile.applications):
             label, description = domain_metadata.get(
@@ -206,9 +202,7 @@ class DashboardService:
             )
         return {
             "portal_domains": domains,
-            "can_manage_iam": any(
-                code in permissions for code in self.SYSTEM_PAGES.values()
-            ),
+            "can_manage_iam": any(code in permissions for code in self.SYSTEM_PAGES.values()),
             "can_view_workorders": "workorder:view" in permissions,
         }
 
@@ -222,9 +216,85 @@ class DashboardService:
         if visible is None:
             raise PageAccessDenied("当前账号没有该业务方向的系统入口权限")
         application_ids = {item.id for item in visible["applications"]}
-        projects = [
-            item for item in profile.projects if item.application_id in application_ids
-        ]
+        projects = [item for item in profile.projects if item.application_id in application_ids]
+        gis_profiles = {
+            "WATER_SUPPLY": {
+                "theme": "water",
+                "metrics": (
+                    ("管网总长", "1,286 km"),
+                    ("监测点", "842"),
+                    ("DMA 分区", "126"),
+                    ("今日预警", "7"),
+                ),
+                "layers": ("供水管网", "DMA 边界", "阀门", "流量计", "压力监测点"),
+                "events": (
+                    ("滨江路 DMA-07", "夜间最小流量异常", "高", "处理中"),
+                    ("城北加压站", "出口压力波动", "中", "待确认"),
+                    ("东湖路 DN600", "疑似漏损", "中", "已派单"),
+                ),
+            },
+            "DRAINAGE": {
+                "theme": "drainage",
+                "metrics": (
+                    ("排水管网", "1,640 km"),
+                    ("泵站", "48"),
+                    ("易涝点", "92"),
+                    ("今日预警", "5"),
+                ),
+                "layers": ("雨水管网", "污水管网", "排水泵站", "易涝点", "液位监测点"),
+                "events": (
+                    ("人民路下穿", "积水深度超限", "高", "处理中"),
+                    ("城南 3# 泵站", "泵组运行异常", "中", "已派单"),
+                    ("开发区主干管", "液位快速上涨", "中", "待确认"),
+                ),
+            },
+            "GAS": {
+                "theme": "gas",
+                "metrics": (
+                    ("燃气管网", "986 km"),
+                    ("阀井", "1,204"),
+                    ("监测设备", "636"),
+                    ("今日告警", "4"),
+                ),
+                "layers": ("高压管线", "中压管线", "调压站", "阀井", "气体监测点"),
+                "events": (
+                    ("高新区调压站", "出口压力偏高", "高", "处理中"),
+                    ("经开大道阀井", "可燃气体浓度预警", "高", "已派单"),
+                    ("西环路支线", "第三方施工风险", "中", "待确认"),
+                ),
+            },
+            "HEATING": {
+                "theme": "heating",
+                "metrics": (
+                    ("热力管网", "728 km"),
+                    ("换热站", "136"),
+                    ("在线测点", "2,418"),
+                    ("今日告警", "3"),
+                ),
+                "layers": ("一次热网", "二次热网", "热源厂", "换热站", "温压监测点"),
+                "events": (
+                    ("城西换热站", "供回水温差偏低", "中", "处理中"),
+                    ("北区一次网", "压力下降", "高", "已派单"),
+                    ("学院路小区", "末端温度偏低", "中", "待确认"),
+                ),
+            },
+            "ROAD": {
+                "theme": "road",
+                "metrics": (
+                    ("道路里程", "2,105 km"),
+                    ("桥梁", "286"),
+                    ("监测设备", "518"),
+                    ("今日告警", "6"),
+                ),
+                "layers": ("城市道路", "桥梁", "隧道", "边坡", "结构监测点"),
+                "events": (
+                    ("跨江大桥", "伸缩缝位移预警", "中", "处理中"),
+                    ("南山隧道", "渗水告警", "中", "已派单"),
+                    ("机场快速路", "路面沉降趋势", "高", "待确认"),
+                ),
+            },
+        }
+        gis_profile = gis_profiles.get(domain, gis_profiles["ROAD"])
         return {
             "business_domain": visible,
             "business_projects": projects,
@@ -234,6 +304,19 @@ class DashboardService:
                 "online_rate": 98,
                 "open_events": max(2, len(projects) * 3),
             },
+            "gis_profile": gis_profile,
+            "gis_markers": (
+                {"left": 18, "top": 62, "label": "西部片区"},
+                {"left": 41, "top": 34, "label": "中心城区"},
+                {"left": 66, "top": 56, "label": "滨江片区"},
+                {"left": 78, "top": 25, "label": "高新片区"},
+            ),
+            "district_health": (
+                ("中心城区", 96),
+                ("滨江片区", 91),
+                ("高新片区", 88),
+                ("西部片区", 94),
+            ),
         }
 
     def dashboard(self, profile: AuthProfile) -> dict:
@@ -243,8 +326,10 @@ class DashboardService:
         except WorkOrderPermissionDenied:
             work_orders = []
         tasks = self.workflow_service.list_my_tasks(
-            profile.user_id, profile.tenant_id,
-            profile.active_application_id, profile.active_project_id,
+            profile.user_id,
+            profile.tenant_id,
+            profile.active_application_id,
+            profile.active_project_id,
         )
         stats = Counter(work_order.status for work_order in work_orders)
         recent_actions = []
@@ -260,16 +345,47 @@ class DashboardService:
             "candidate_labels": self._task_candidate_labels(tasks),
         }
 
-    def organizations(self, profile: AuthProfile) -> dict:
+    def organizations(
+        self,
+        profile: AuthProfile,
+        selected_organization_id: int | None = None,
+    ) -> dict:
         self._require_system_page(profile, "organizations")
-        organizations = self.organization_admin_service.list_organizations(
-            self._iam_actor(profile)
-        )
+        organizations = self.organization_admin_service.list_organizations(self._iam_actor(profile))
         permissions = set(profile.permission_codes)
+        selected_organization = next(
+            (
+                item
+                for item in organizations
+                if item.id == selected_organization_id
+            ),
+            None,
+        )
+        if selected_organization is None:
+            selected_organization = next(
+                (item for item in organizations if item.id == profile.active_org_id),
+                organizations[0] if organizations else None,
+            )
+        organization_by_id = {item.id: item for item in organizations}
         return {
             "organizations": organizations,
             "organization_tree": self._organization_tree(organizations),
             "organization_codes": {item.id: item.org_code for item in organizations},
+            "selected_organization": selected_organization,
+            "selected_parent_organization": (
+                organization_by_id.get(selected_organization.parent_id)
+                if selected_organization is not None
+                else None
+            ),
+            "selected_child_organizations": (
+                [
+                    item
+                    for item in organizations
+                    if item.parent_id == selected_organization.id
+                ]
+                if selected_organization is not None
+                else []
+            ),
             "organization_scope_label": self._organization_scope_label(profile),
             "organization_capabilities": {
                 "create": "system:org:create" in permissions,
@@ -288,12 +404,9 @@ class DashboardService:
                 membership.org_id: {
                     "is_primary": membership.is_primary,
                     "is_active": membership.is_active,
-                    "role_codes": {
-                        link.role.role_code for link in membership.role_links
-                    },
+                    "role_codes": {link.role.role_code for link in membership.role_links},
                     "position_codes": {
-                        link.position.position_code
-                        for link in membership.position_links
+                        link.position.position_code for link in membership.position_links
                     },
                 }
                 for membership in user.memberships
@@ -365,9 +478,7 @@ class DashboardService:
         positions = self.iam_service.list_positions()
         return {
             "positions": positions,
-            "position_bindings": self._position_bindings(
-                self.iam_service.list_users()
-            ),
+            "position_bindings": self._position_bindings(self.iam_service.list_users()),
             "position_capabilities": {
                 "create": "system:position:create" in permissions,
                 "update": "system:position:update" in permissions,
@@ -378,9 +489,7 @@ class DashboardService:
 
     def position_detail(self, profile: AuthProfile, position_id: int) -> dict:
         context = self.positions(profile)
-        context["position"] = self._find_entity(
-            context["positions"], position_id, "岗位"
-        )
+        context["position"] = self._find_entity(context["positions"], position_id, "岗位")
         return context
 
     def permissions(self, profile: AuthProfile) -> dict:
@@ -456,8 +565,7 @@ class DashboardService:
                 item for item in self.iam_service.list_organizations() if item.is_active
             ],
             "can_create": "workorder:create" in profile.permission_codes,
-            "can_evaluate_sla": "workorder:sla:evaluate"
-            in profile.permission_codes,
+            "can_evaluate_sla": "workorder:sla:evaluate" in profile.permission_codes,
             "can_batch_dispatch": "workorder:dispatch" in profile.permission_codes,
             "can_batch_urge": "workorder:urge" in profile.permission_codes,
         }
@@ -471,11 +579,7 @@ class DashboardService:
         work_order = self.work_order_service.get_visible(work_order_id, actor)
         timeline = self.work_order_service.timeline(work_order_id, actor)
         tasks = self.workflow_service.list_my_tasks(profile.user_id)
-        matching_tasks = [
-            task
-            for task in tasks
-            if task.instance.business_id == work_order_id
-        ]
+        matching_tasks = [task for task in tasks if task.instance.business_id == work_order_id]
         return {
             "work_order": work_order,
             "timeline": timeline,
@@ -500,16 +604,11 @@ class DashboardService:
                 work_order.id,
                 actor,
             ),
-            "can_upload_attachment": "workorder:attachment"
-            in profile.permission_codes,
+            "can_upload_attachment": "workorder:attachment" in profile.permission_codes,
         }
 
     def notifications(self, profile: AuthProfile) -> dict:
-        return {
-            "notifications": self.notification_service.list_for_user(
-                profile.user_id
-            )
-        }
+        return {"notifications": self.notification_service.list_for_user(profile.user_id)}
 
     def my_tasks(self, profile: AuthProfile) -> dict:
         tasks = self.workflow_service.list_my_tasks(profile.user_id)
@@ -528,8 +627,11 @@ class DashboardService:
     @staticmethod
     def _actor(profile: AuthProfile) -> WorkOrderActor:
         return WorkOrderActor(
-            profile.user_id, profile.active_org_id, profile.tenant_id,
-            profile.active_application_id, profile.active_project_id,
+            profile.user_id,
+            profile.active_org_id,
+            profile.tenant_id,
+            profile.active_application_id,
+            profile.active_project_id,
         )
 
     @staticmethod
@@ -555,10 +657,7 @@ class DashboardService:
 
     @staticmethod
     def _organization_tree(organizations: list) -> list[dict]:
-        nodes = {
-            item.id: {"organization": item, "children": []}
-            for item in organizations
-        }
+        nodes = {item.id: {"organization": item, "children": []} for item in organizations}
         roots = []
         for item in organizations:
             node = nodes[item.id]
@@ -640,10 +739,7 @@ class DashboardService:
             and "workorder:urge" in permissions
         ):
             actions.add("urge")
-        if (
-            work_order.status == "PROCESSING"
-            and "workorder:transfer" in permissions
-        ):
+        if work_order.status == "PROCESSING" and "workorder:transfer" in permissions:
             actions.add("transfer")
         return actions
 
@@ -651,11 +747,7 @@ class DashboardService:
         self,
         tasks: list[WorkflowTask],
     ) -> dict[int, list[str]]:
-        user_ids = {
-            candidate.resolved_user_id
-            for task in tasks
-            for candidate in task.candidates
-        }
+        user_ids = {candidate.resolved_user_id for task in tasks for candidate in task.candidates}
         labels = self.iam_service.active_user_labels(user_ids)
         return {
             task.id: [

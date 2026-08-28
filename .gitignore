@@ -11,5 +11,9 @@ htmlcov/
 .env
 /var/
 
+# Generated artifact inspection and Office lock files
+*.inspect.ndjson
+~$*
+
 # Original design delivery pack (kept locally; curated docs live in this repository)
 /python_aicoding_demo_design/

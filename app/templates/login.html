@@ -17,16 +17,15 @@
     <section class="login-card">
       <span class="brand-mark large">YF</span>
       <p class="eyebrow">欢迎回来</p>
-      <h2>登录协同中枢</h2>
-      <p class="muted">使用演示账号进入对应角色的工作空间。</p>
+      <h2>统一登录中心</h2>
+      <p class="muted">系统将自动识别平台身份与所属城市，并进入对应工作空间。</p>
       <form id="login-form">
-        <label>租户编码<input name="tenant_code" value="DEMO" required></label>
-        <label>账号<input name="username" autocomplete="username" value="admin" required></label>
+        <label>用户名<input name="username" autocomplete="username" value="admin" required></label>
         <label>密码<input type="password" name="password" autocomplete="current-password" value="Demo@123456" required></label>
         <p id="login-error" class="form-error" role="alert"></p>
         <button class="button primary wide" type="submit">进入工作台</button>
       </form>
-      <div class="demo-hint"><strong>演示账号（统一密码 Demo@123456）</strong><span>admin · 系统管理员</span><span>wangwu · 调度与复核</span><span>lisi · 抢修人员</span></div>
+      <div class="demo-hint"><strong>租户账号密码 Demo@123456</strong><span>admin · 江城市管理员</span><span>water_manager · 供水 GIS 管理员</span><span>gas_manager · 燃气 GIS 管理员</span><span>lisi · 江城市工程人员</span><span>平台账号 root / Root@123456</span></div>
     </section>
   </main>
   <script>
@@ -36,7 +35,7 @@
       event.preventDefault();
       errorBox.textContent = '';
       const values = new FormData(form);
-      const response = await fetch('/auth/login', {
+      const response = await fetch('/auth/unified-login', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(Object.fromEntries(values))
       });
@@ -45,8 +44,8 @@
         errorBox.textContent = payload.detail || '登录失败，请检查账号和密码。';
         return;
       }
-      const next = new URLSearchParams(location.search).get('next');
-      location.href = next && next.startsWith('/') ? next : '/entry';
+      const payload = await response.json();
+      location.href = payload.next_path;
     });
   </script>
 </body>

@@ -43,6 +43,7 @@ class OrganizationTreeResponse(OrganizationResponse):
 
 class CreateUserRequest(BaseModel):
     username: str = Field(min_length=3, max_length=80)
+    login_name: str | None = Field(default=None, min_length=3, max_length=120)
     display_name: str = Field(min_length=1, max_length=120)
     password: str = Field(min_length=8, max_length=128)
     phone: str | None = Field(default=None, max_length=40)
@@ -87,6 +88,7 @@ class UserMembershipResponse(BaseModel):
 class UserResponse(BaseModel):
     id: int
     username: str
+    login_name: str
     display_name: str
     phone: str | None
     is_active: bool

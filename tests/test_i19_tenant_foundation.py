@@ -10,7 +10,7 @@ from app.db.base import Base
 from app.db.session import Database
 from app.iam.models import Organization, Tenant, User
 from app.iam.repository import IAMRepository
-from app.iam.seed import DEMO_INITIAL_PASSWORD, seed_iam
+from app.iam.seed import DEMO_INITIAL_PASSWORD, USERS, seed_iam
 from app.iam.service import IAMService
 from app.main import create_app
 
@@ -57,14 +57,14 @@ def tenant_client(tmp_path: Path) -> Iterator[tuple[TestClient, int, int]]:
         yield client, default_admin_id, default_group_id
 
 
-def _login(client: TestClient, tenant_code: str | None = None):
-    payload = {
-        "username": "admin",
-        "password": DEMO_INITIAL_PASSWORD,
-    }
-    if tenant_code is not None:
-        payload["tenant_code"] = tenant_code
-    return client.post("/auth/login", json=payload)
+def _login(client: TestClient, login_name: str = "admin"):
+    return client.post(
+        "/auth/login",
+        json={
+            "username": login_name,
+            "password": DEMO_INITIAL_PASSWORD,
+        },
+    )
 
 
 def test_same_identity_codes_are_isolated_by_tenant(
@@ -77,7 +77,7 @@ def test_same_identity_codes_are_isolated_by_tenant(
     assert default_profile["tenant_name"] == "江城市城市生命线租户"
     assert default_profile["user_id"] == default_admin_id
 
-    second_login = _login(client, "city_b")
+    second_login = _login(client, "b.admin")
     assert second_login.status_code == 200
     second_profile = second_login.json()
     assert second_profile["tenant_code"] == "CITY_B"
@@ -87,38 +87,41 @@ def test_same_identity_codes_are_isolated_by_tenant(
 
     users = client.get("/api/users")
     assert users.status_code == 200
-    assert {item["username"] for item in users.json()} == {
-        "admin",
-        "dma_specialist",
-        "hydraulic_specialist",
-        "lisi",
-        "owner_pm",
-        "owner_leader",
-        "platform_ops",
-        "regulator",
-        "software_delivery",
-        "supervisor_engineer",
-        "water_drainage_leader",
-        "wangwu",
-        "zhangsan",
-        "zhaoliu",
-    }
+    assert {item["username"] for item in users.json()} == {username for username, _ in USERS}
     assert client.get(f"/api/users/{default_admin_id}").status_code == 404
-    assert client.post(
-        "/auth/active-org",
-        json={"org_id": default_group_id},
-    ).status_code == 403
+    assert (
+        client.post(
+            "/auth/active-org",
+            json={"org_id": default_group_id},
+        ).status_code
+        == 403
+    )
 
 
-def test_login_rejects_unknown_tenant_without_leaking_identity(
+def test_login_rejects_unknown_global_login_without_leaking_identity(
     tenant_client: tuple[TestClient, int, int],
 ) -> None:
     client, _, _ = tenant_client
 
-    response = _login(client, "NOT_EXISTS")
+    response = _login(client, "not.exists")
 
     assert response.status_code == 401
-    assert response.json()["detail"] == "invalid tenant or credentials"
+    assert response.json()["detail"] == "invalid username or password"
+
+
+def test_login_contract_rejects_tenant_code(
+    tenant_client: tuple[TestClient, int, int],
+) -> None:
+    client, _, _ = tenant_client
+    response = client.post(
+        "/auth/login",
+        json={
+            "tenant_code": "CITY_B",
+            "username": "b.admin",
+            "password": DEMO_INITIAL_PASSWORD,
+        },
+    )
+    assert response.status_code == 422
 
 
 def test_scoped_repositories_return_only_their_tenant_entities(
@@ -137,15 +140,13 @@ def test_scoped_repositories_return_only_their_tenant_entities(
     default_repository = IAMRepository(db_session, 1)
     second_repository = IAMRepository(db_session, second_tenant.id)
 
-    assert len(default_repository.list_users()) == 14
-    assert len(second_repository.list_users()) == 14
+    assert len(default_repository.list_users()) == len(USERS)
+    assert len(second_repository.list_users()) == len(USERS)
     assert default_repository.get_user_by_username("admin").id != (
         second_repository.get_user_by_username("admin").id
     )
     assert all(item.tenant_id == 1 for item in default_repository.list_roles())
-    assert all(
-        item.tenant_id == second_tenant.id for item in second_repository.list_roles()
-    )
+    assert all(item.tenant_id == second_tenant.id for item in second_repository.list_roles())
     default_repairers = default_repository.list_active_user_ids_by_role("REPAIRER")
     second_repairers = second_repository.list_active_user_ids_by_role("REPAIRER")
     assert len(default_repairers) == 2

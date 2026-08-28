@@ -41,6 +41,11 @@ class AuthRepository:
     def get_user(self, user_id: int) -> User | None:
         return self.session.get(User, user_id)
 
+    def get_user_by_login_name(self, login_name: str) -> User | None:
+        return self.session.scalar(
+            select(User).where(User.login_name == login_name.strip().lower())
+        )
+
     def list_active_tenants(self) -> list[Tenant]:
         return list(
             self.session.scalars(

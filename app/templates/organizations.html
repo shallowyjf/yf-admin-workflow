@@ -2,31 +2,97 @@
 {% macro render_org_node(node) %}
 {% set org = node.organization %}
 <li class="org-tree-item">
-  <article class="org-tree-node{% if org.id == profile.active_org_id %} active{% endif %}">
-    <span class="org-tree-branch" aria-hidden="true"></span>
-    <div class="org-node-main">
-      <span class="org-node-icon">{{ '根' if not org.parent_id else '组' }}</span>
-      <span><strong>{{ org.org_name }}</strong><small>{{ org.org_code }} · {{ org.org_type or '未分类' }}</small></span>
-    </div>
-    <div class="org-node-meta">
-      {% if org.id == profile.active_org_id %}<span class="scope-badge">当前组织</span>{% endif %}
-      <span class="status">{{ '启用' if org.is_active else '停用' }}</span>
-      <small>{{ org.memberships|length }} 位成员</small>
-    </div>
-    <div class="inline-actions">
-      {% if organization_capabilities.update %}<details><summary class="button ghost">编辑</summary><form method="post" action="/ui/organizations/{{ org.id }}/update" class="popover-form"><label>组织名称<input name="org_name" value="{{ org.org_name }}" required></label><label>组织类型<input name="org_type" value="{{ org.org_type or '' }}"></label><label>父级组织<select name="parent_code"><option value="">无（根组织）</option>{% for parent in organizations if parent.id != org.id and parent.is_active %}<option value="{{ parent.org_code }}"{% if organization_codes.get(org.parent_id) == parent.org_code %} selected{% endif %}>{{ parent.org_name }}</option>{% endfor %}</select></label><label>排序<input name="sort_no" type="number" value="{{ org.sort_no }}"></label><button class="button primary" type="submit">保存修改</button></form></details>{% endif %}
-      {% if organization_capabilities.status %}<form method="post" action="/ui/organizations/{{ org.id }}/status"><input type="hidden" name="is_active" value="{{ 'false' if org.is_active else 'true' }}"><button class="button ghost" type="submit">{{ '停用' if org.is_active else '启用' }}</button></form>{% endif %}
-      {% if organization_capabilities.delete %}<form method="post" action="/ui/organizations/{{ org.id }}/delete" onsubmit="return confirm('仅无子组织、无成员、无业务引用的组织可以删除。确认继续？')"><button class="button danger" type="submit">删除</button></form>{% endif %}
-    </div>
-  </article>
+  <a class="org-tree-link{% if selected_organization and org.id == selected_organization.id %} selected{% endif %}" href="/iam/organizations?organization_id={{ org.id }}"{% if selected_organization and org.id == selected_organization.id %} aria-current="true"{% endif %}>
+    <span class="org-node-icon">{{ '根' if not org.parent_id else '组' }}</span>
+    <span class="org-tree-label">
+      <strong>{{ org.org_name }}</strong>
+      <small>{{ org.org_code }} · {{ org.org_type or '未分类' }}</small>
+    </span>
+    <span class="org-tree-count">{{ org.memberships|length }}</span>
+    {% if org.id == profile.active_org_id %}<i class="org-identity-dot" title="当前身份组织"></i>{% endif %}
+  </a>
   {% if node.children %}<ul class="org-tree-children">{% for child in node.children %}{{ render_org_node(child) }}{% endfor %}</ul>{% endif %}
 </li>
 {% endmacro %}
+
 {% block content %}
-<section class="page-intro"><div><h2>组织权限树</h2><p>当前展示范围：<strong>{{ organization_scope_label }}</strong>。树节点已由服务端按当前组织与角色数据范围裁剪。</p></div>{% if organization_capabilities.create %}<button class="button primary" type="button" onclick="document.querySelector('#create-org-panel').toggleAttribute('hidden')" data-testid="create-organization">新增组织</button>{% endif %}</section>
-{% if organization_capabilities.create %}<section id="create-org-panel" class="panel form-panel" hidden><div class="panel-head"><div><p class="eyebrow">NEW ORGANIZATION</p><h2>新增组织</h2></div></div><form method="post" action="/ui/organizations" class="form-grid"><label>组织编码<input name="org_code" placeholder="例如 INSPECTION_TEAM_3" pattern="[A-Za-z][A-Za-z0-9_]+" required></label><label>组织名称<input name="org_name" required></label><label>组织类型<select name="org_type"><option value="DEPARTMENT">部门</option><option value="TEAM">班组</option><option value="GROUP">集团</option></select></label><label>父级组织<select name="parent_code"><option value="">无（根组织）</option>{% for parent in organizations if parent.is_active %}<option value="{{ parent.org_code }}">{{ parent.org_name }} · {{ parent.org_code }}</option>{% endfor %}</select></label><label>排序<input name="sort_no" type="number" value="0"></label><div class="form-actions"><button class="button primary" type="submit">保存组织</button></div></form></section>{% endif %}
-<section class="panel org-tree-panel" data-testid="organization-tree">
-  <div class="tree-legend"><span><i class="legend-current"></i>当前组织</span><span>仅显示有权查看的组织节点</span></div>
-  {% if organization_tree %}<ul class="org-tree-root">{% for node in organization_tree %}{{ render_org_node(node) }}{% endfor %}</ul>{% else %}<div class="empty">当前数据范围内没有可见组织</div>{% endif %}
+<section class="page-intro organization-page-intro">
+  <div>
+    <h2>组织架构</h2>
+    <p>左侧选择组织，右侧查看或维护组织明细。当前展示范围：<strong>{{ organization_scope_label }}</strong>。</p>
+  </div>
+  {% if organization_capabilities.create %}<button class="button primary" type="button" onclick="document.querySelector('#create-org-panel').toggleAttribute('hidden')" data-testid="create-organization">新增组织</button>{% endif %}
 </section>
+
+<div class="organization-workbench">
+  <aside class="panel organization-tree-pane" data-testid="organization-tree">
+    <div class="organization-pane-head">
+      <div><p class="eyebrow">ORGANIZATION TREE</p><h2>全部可见组织</h2></div>
+      <span>{{ organizations|length }} 个</span>
+    </div>
+    <div class="tree-legend"><span><i class="legend-current"></i>当前身份组织</span><span>数字为成员数</span></div>
+    {% if organization_tree %}<ul class="org-tree-root">{% for node in organization_tree %}{{ render_org_node(node) }}{% endfor %}</ul>{% else %}<div class="empty">当前数据范围内没有可见组织</div>{% endif %}
+  </aside>
+
+  <section class="organization-detail-pane">
+    {% if organization_capabilities.create %}
+    <section id="create-org-panel" class="panel form-panel" hidden>
+      <div class="panel-head"><div><p class="eyebrow">NEW ORGANIZATION</p><h2>新增组织</h2></div><button class="button ghost" type="button" onclick="document.querySelector('#create-org-panel').setAttribute('hidden','')">取消</button></div>
+      <form method="post" action="/ui/organizations" class="form-grid">
+        <label>组织编码<input name="org_code" placeholder="例如 INSPECTION_TEAM_3" pattern="[A-Za-z][A-Za-z0-9_]+" required></label>
+        <label>组织名称<input name="org_name" required></label>
+        <label>组织类型<select name="org_type"><option value="DEPARTMENT">部门</option><option value="TEAM">班组</option><option value="GROUP">集团</option></select></label>
+        <label>父级组织<select name="parent_code"><option value="">无（根组织）</option>{% for parent in organizations if parent.is_active %}<option value="{{ parent.org_code }}">{{ parent.org_name }} · {{ parent.org_code }}</option>{% endfor %}</select></label>
+        <label>排序<input name="sort_no" type="number" value="0"></label>
+        <div class="form-actions"><button class="button primary" type="submit">保存组织</button></div>
+      </form>
+    </section>
+    {% endif %}
+
+    {% if selected_organization %}
+    <section class="panel organization-detail-card" data-testid="organization-detail" data-selected-organization-id="{{ selected_organization.id }}">
+      <div class="organization-detail-head">
+        <div>
+          <p class="eyebrow">ORGANIZATION DETAIL</p>
+          <div class="title-line"><h2>{{ selected_organization.org_name }}</h2><span class="status {{ 'status-processing' if selected_organization.is_active else '' }}">{{ '启用' if selected_organization.is_active else '停用' }}</span></div>
+          <p>{{ selected_organization.org_code }} · {{ selected_organization.org_type or '未分类' }}</p>
+        </div>
+        <span class="org-detail-icon">{{ '根' if not selected_organization.parent_id else '组' }}</span>
+      </div>
+
+      <form method="post" action="/ui/organizations/{{ selected_organization.id }}/update" class="organization-detail-form">
+        <label>组织编码<input value="{{ selected_organization.org_code }}" readonly></label>
+        <label>组织名称<input name="org_name" value="{{ selected_organization.org_name }}" required{% if not organization_capabilities.update %} readonly{% endif %}></label>
+        <label>组织类型<input name="org_type" value="{{ selected_organization.org_type or '' }}" placeholder="未分类"{% if not organization_capabilities.update %} readonly{% endif %}></label>
+        <label>上级组织<select name="parent_code"{% if not organization_capabilities.update %} disabled{% endif %}><option value="">无（根组织）</option>{% for parent in organizations if parent.id != selected_organization.id and parent.is_active %}<option value="{{ parent.org_code }}"{% if selected_parent_organization and selected_parent_organization.id == parent.id %} selected{% endif %}>{{ parent.org_name }} · {{ parent.org_code }}</option>{% endfor %}</select></label>
+        <label>组织路径<input value="{{ selected_organization.org_path }}" readonly></label>
+        <label>显示排序<input name="sort_no" type="number" value="{{ selected_organization.sort_no }}"{% if not organization_capabilities.update %} readonly{% endif %}></label>
+        <label>组织状态<input value="{{ '启用' if selected_organization.is_active else '停用' }}" readonly></label>
+        <label>直属成员 / 下级组织<input value="{{ selected_organization.memberships|length }} 人 / {{ selected_child_organizations|length }} 个" readonly></label>
+        {% if organization_capabilities.update %}<div class="organization-detail-submit"><button class="button primary" type="submit">保存组织明细</button></div>{% endif %}
+      </form>
+
+      <div class="organization-detail-actions">
+        {% if organization_capabilities.status %}<form method="post" action="/ui/organizations/{{ selected_organization.id }}/status"><input type="hidden" name="is_active" value="{{ 'false' if selected_organization.is_active else 'true' }}"><button class="button ghost" type="submit">{{ '停用组织' if selected_organization.is_active else '启用组织' }}</button></form>{% endif %}
+        {% if organization_capabilities.delete %}<form method="post" action="/ui/organizations/{{ selected_organization.id }}/delete" onsubmit="return confirm('仅无子组织、无成员、无业务引用的组织可以删除。确认继续？')"><button class="button danger" type="submit">删除组织</button></form>{% endif %}
+      </div>
+    </section>
+
+    <section class="panel organization-members-panel">
+      <div class="panel-head"><div><p class="eyebrow">MEMBERS</p><h2>直属成员</h2></div><span class="status">{{ selected_organization.memberships|length }} 人</span></div>
+      <div class="organization-member-list">
+        {% for membership in selected_organization.memberships %}
+        <a class="organization-member" href="/iam/users/{{ membership.user.id }}">
+          <span class="avatar">{{ membership.user.display_name[:1] }}</span>
+          <span><strong>{{ membership.user.display_name }}</strong><small>@{{ membership.user.username }}{% if membership.is_primary %} · 主组织{% endif %}</small></span>
+          <span>{% for link in membership.role_links %}<i>{{ link.role.role_name }}</i>{% endfor %}{% for link in membership.position_links %}<i>{{ link.position.position_name }}</i>{% endfor %}</span>
+        </a>
+        {% else %}<div class="empty">该组织暂无直属成员</div>{% endfor %}
+      </div>
+    </section>
+    {% else %}
+    <section class="panel empty organization-detail-empty" data-testid="organization-detail">请选择左侧组织查看表单明细</section>
+    {% endif %}
+  </section>
+</div>
 {% endblock %}

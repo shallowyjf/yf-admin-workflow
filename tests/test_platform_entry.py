@@ -51,12 +51,11 @@ def clear_browser_cookies(
     platform_environment[0].cookies.clear()
 
 
-def _tenant_login(client: TestClient, tenant_code: str, username: str) -> dict:
+def _tenant_login(client: TestClient, login_name: str) -> dict:
     response = client.post(
         "/auth/login",
         json={
-            "tenant_code": tenant_code,
-            "username": username,
+            "username": login_name,
             "password": DEMO_INITIAL_PASSWORD,
         },
     )
@@ -69,12 +68,14 @@ def test_platform_root_selects_city_before_getting_tenant_session(
 ) -> None:
     client, tenant_ids = platform_environment
     login = client.post(
-        "/platform/login",
-        data={"username": "root", "password": PLATFORM_ROOT_PASSWORD},
-        follow_redirects=False,
+        "/auth/unified-login",
+        json={"username": "root", "password": PLATFORM_ROOT_PASSWORD},
     )
-    assert login.status_code == 303
-    assert login.headers["location"] == "/platform/tenants"
+    assert login.status_code == 200
+    assert login.json() == {
+        "identity_type": "PLATFORM_ROOT",
+        "next_path": "/platform/tenants",
+    }
 
     # 平台身份和租户身份分离：选城市之前不能调用租户业务 API。
     assert client.get("/auth/me").status_code == 401
@@ -94,11 +95,16 @@ def test_platform_root_selects_city_before_getting_tenant_session(
 
     portal = client.get("/portal")
     assert portal.status_code == 200
+    assert 'data-testid="current-login-user"' in portal.text
+    assert "@haizhou.admin" in portal.text
+    assert 'id="active-application"' not in portal.text
+    assert 'id="active-project"' not in portal.text
+    assert 'id="active-org"' not in portal.text
     assert "返回城市选择" in portal.text
     assert "权限管理中心" in portal.text
     assert "工单中心" in portal.text
     assert all(
-        f"{domain}业务驾驶舱" in portal.text
+        f"{domain}业务驾驶舱" in portal.text or f"{domain} GIS 驾驶舱" in portal.text
         for domain in ("供水", "排水", "燃气", "供热", "道路")
     )
 
@@ -107,7 +113,7 @@ def test_tenant_admin_uses_portal_and_field_worker_goes_to_workorders(
     platform_environment: tuple[TestClient, dict[str, int]],
 ) -> None:
     client, _ = platform_environment
-    admin = _tenant_login(client, "DEMO", "admin")
+    admin = _tenant_login(client, "admin")
     assert {item["domain_type"] for item in admin["applications"]} == {
         "WATER_SUPPLY",
         "DRAINAGE",
@@ -119,7 +125,7 @@ def test_tenant_admin_uses_portal_and_field_worker_goes_to_workorders(
     assert admin_entry.headers["location"] == "/portal"
 
     client.cookies.clear()
-    _tenant_login(client, "DEMO", "lisi")
+    _tenant_login(client, "lisi")
     worker_entry = client.get("/entry", follow_redirects=False)
     assert worker_entry.status_code == 303
     assert worker_entry.headers["location"] == "/workorders"
@@ -129,13 +135,13 @@ def test_specialist_portal_and_static_dashboard_follow_real_system_grants(
     platform_environment: tuple[TestClient, dict[str, int]],
 ) -> None:
     client, _ = platform_environment
-    _tenant_login(client, "DEMO", "dma_specialist")
+    _tenant_login(client, "dma_specialist")
     assert client.get("/entry", follow_redirects=False).headers["location"] == "/portal"
 
     portal = client.get("/portal")
-    assert "供水业务驾驶舱" in portal.text
-    assert "排水业务驾驶舱" not in portal.text
-    assert "燃气业务驾驶舱" not in portal.text
+    assert "供水 GIS 驾驶舱" in portal.text
+    assert "排水 GIS 驾驶舱" not in portal.text
+    assert "燃气 GIS 驾驶舱" not in portal.text
 
     water = client.get("/business-dashboard/WATER_SUPPLY")
     assert water.status_code == 200
@@ -143,6 +149,36 @@ def test_specialist_portal_and_static_dashboard_follow_real_system_grants(
     assert "供水 DMA 漏损管理系统" in water.text
     denied = client.get("/business-dashboard/GAS")
     assert denied.status_code == 403
+
+
+@pytest.mark.parametrize(
+    ("login_name", "domain", "expected_applications", "denied_domain"),
+    (
+        ("water_manager", "WATER_SUPPLY", {"WATER_SUPPLY", "WATER_HYDRAULIC"}, "GAS"),
+        ("drainage_manager", "DRAINAGE", {"DRAINAGE"}, "WATER_SUPPLY"),
+        ("gas_manager", "GAS", {"GAS"}, "HEATING"),
+        ("heating_manager", "HEATING", {"HEATING"}, "DRAINAGE"),
+        ("road_manager", "ROAD", {"ROAD"}, "GAS"),
+    ),
+)
+def test_business_manager_goes_directly_to_own_isolated_gis_dashboard(
+    platform_environment: tuple[TestClient, dict[str, int]],
+    login_name: str,
+    domain: str,
+    expected_applications: set[str],
+    denied_domain: str,
+) -> None:
+    client, _ = platform_environment
+    profile = _tenant_login(client, login_name)
+    assert {item["application_code"] for item in profile["applications"]} == (expected_applications)
+    entry = client.get("/entry", follow_redirects=False)
+    assert entry.status_code == 303
+    assert entry.headers["location"] == f"/business-dashboard/{domain}"
+    dashboard = client.get(entry.headers["location"])
+    assert dashboard.status_code == 200
+    assert "GIS 管理系统驾驶舱" in dashboard.text
+    assert "设施一张图" in dashboard.text
+    assert client.get(f"/business-dashboard/{denied_domain}").status_code == 403
 
 
 def test_tenant_entry_requires_platform_root_session(
@@ -154,4 +190,27 @@ def test_tenant_entry_requires_platform_root_session(
         follow_redirects=False,
     )
     assert response.status_code == 303
-    assert response.headers["location"] == "/platform/login"
+    assert response.headers["location"] == "/login"
+
+
+def test_unified_login_auto_resolves_city_and_role_landing(
+    platform_environment: tuple[TestClient, dict[str, int]],
+) -> None:
+    client, _ = platform_environment
+    login = client.post(
+        "/auth/unified-login",
+        json={"username": "haizhou.admin", "password": DEMO_INITIAL_PASSWORD},
+    )
+    assert login.status_code == 200
+    assert login.json() == {"identity_type": "TENANT_USER", "next_path": "/entry"}
+    assert client.get("/auth/me").json()["tenant_code"] == "CITY_HAIZHOU"
+    assert client.get("/entry", follow_redirects=False).headers["location"] == "/portal"
+
+    client.cookies.clear()
+    worker = client.post(
+        "/auth/unified-login",
+        json={"username": "yunzhou.lisi", "password": DEMO_INITIAL_PASSWORD},
+    )
+    assert worker.status_code == 200
+    assert client.get("/auth/me").json()["tenant_code"] == "CITY_YUNZHOU"
+    assert client.get("/entry", follow_redirects=False).headers["location"] == "/workorders"

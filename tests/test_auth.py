@@ -75,6 +75,7 @@ def test_login_sets_secure_cookie_and_me_returns_permission_summary(
     assert profile["tenant_code"] == "DEMO"
     assert profile["tenant_name"] == "江城市城市生命线租户"
     assert profile["username"] == "wangwu"
+    assert profile["login_name"] == "wangwu"
     assert profile["role_codes"] == ["DISPATCHER", "REVIEWER"]
     assert "workorder:dispatch" in profile["permission_codes"]
     assert {org["org_code"] for org in profile["organizations"]} == {

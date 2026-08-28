@@ -182,6 +182,7 @@ class IAMBulkService:
             user = self.user_service.create(
                 CreateUserCommand(
                     username=username,
+                    login_name=record.get("login_name"),
                     display_name=str(record["display_name"]),
                     password=password,
                     phone=record.get("phone"),

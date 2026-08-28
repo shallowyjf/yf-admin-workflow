@@ -290,43 +290,8 @@ def root() -> RedirectResponse:
 
 
 @router.get("/platform/login", response_class=HTMLResponse, include_in_schema=False)
-def platform_login_page(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(
-        request=request,
-        name="platform_login.html",
-        context={"request": request, "error": None},
-    )
-
-
-@router.post("/platform/login", include_in_schema=False, response_model=None)
-async def platform_login(
-    request: Request,
-    service: Annotated[PlatformAuthService, Depends(get_platform_auth_service)],
-) -> HTMLResponse | RedirectResponse:
-    values = await _form(request)
-    try:
-        token = service.login(values.get("username", ""), values.get("password", ""))
-    except PlatformAuthenticationError:
-        return templates.TemplateResponse(
-            request=request,
-            name="platform_login.html",
-            context={"request": request, "error": "平台账号或密码错误"},
-            status_code=status.HTTP_401_UNAUTHORIZED,
-        )
-    settings = request.app.state.settings
-    response = RedirectResponse(
-        "/platform/tenants", status_code=status.HTTP_303_SEE_OTHER
-    )
-    response.set_cookie(
-        key=settings.platform_auth_cookie_name,
-        value=token,
-        max_age=settings.auth_session_hours * 60 * 60,
-        httponly=True,
-        secure=settings.auth_cookie_secure,
-        samesite="lax",
-        path="/",
-    )
-    return response
+def platform_login_page(request: Request) -> RedirectResponse:
+    return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.get(
@@ -346,7 +311,7 @@ def platform_tenant_selector(
         )
     except PlatformAuthenticationError:
         return RedirectResponse(
-            "/platform/login", status_code=status.HTTP_303_SEE_OTHER
+            "/login", status_code=status.HTTP_303_SEE_OTHER
         )
     return templates.TemplateResponse(
         request=request,
@@ -381,7 +346,7 @@ def enter_city_tenant(
         result = auth_service.create_tenant_session(administrator.id, tenant.id)
     except (PlatformAuthenticationError, AuthenticationError, ActiveOrganizationDenied):
         return RedirectResponse(
-            "/platform/login", status_code=status.HTTP_303_SEE_OTHER
+            "/login", status_code=status.HTTP_303_SEE_OTHER
         )
     response = RedirectResponse("/portal", status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie(
@@ -404,7 +369,7 @@ def platform_logout(
     settings = request.app.state.settings
     service.logout(request.cookies.get(settings.platform_auth_cookie_name))
     response = RedirectResponse(
-        "/platform/login", status_code=status.HTTP_303_SEE_OTHER
+        "/login", status_code=status.HTTP_303_SEE_OTHER
     )
     response.delete_cookie(settings.platform_auth_cookie_name, path="/")
     response.delete_cookie(settings.auth_cookie_name, path="/")
@@ -468,7 +433,7 @@ def business_dashboard_page(
         service,
         identity,
         "business_dashboard.html",
-        f"{data['business_domain']['label']}业务驾驶舱",
+        f"{data['business_domain']['label']} GIS 管理系统驾驶舱",
         "portal",
         data,
     )
@@ -727,8 +692,21 @@ def organizations_page(
     request: Request,
     identity: Annotated[PageIdentity, Depends(get_page_identity)],
     service: Annotated[DashboardService, Depends(get_dashboard_service)],
+    organization_id: int | None = None,
 ) -> HTMLResponse:
-    return _iam_page(request, identity, service, "organizations", "组织管理")
+    try:
+        data = service.organizations(identity.profile, organization_id)
+    except PageAccessDenied as error:
+        return _friendly_error(request, service, identity, error)
+    return _page(
+        request,
+        service,
+        identity,
+        "organizations.html",
+        "组织管理",
+        "organizations",
+        data,
+    )
 
 
 @router.get("/iam/users", response_class=HTMLResponse, include_in_schema=False)
@@ -1138,7 +1116,7 @@ async def create_organization_page(
 ) -> HTMLResponse | RedirectResponse:
     values = await _form(request)
     try:
-        service.organization_admin_service.create(
+        organization = service.organization_admin_service.create(
             CreateOrganizationCommand(
                 org_code=values.get("org_code", ""),
                 org_name=values.get("org_name", ""),
@@ -1157,7 +1135,8 @@ async def create_organization_page(
     ) as error:
         return _friendly_error(request, service, identity, error)
     return RedirectResponse(
-        "/iam/organizations", status_code=status.HTTP_303_SEE_OTHER
+        f"/iam/organizations?organization_id={organization.id}",
+        status_code=status.HTTP_303_SEE_OTHER,
     )
 
 
@@ -1192,7 +1171,8 @@ async def update_organization_page(
     ) as error:
         return _friendly_error(request, service, identity, error)
     return RedirectResponse(
-        "/iam/organizations", status_code=status.HTTP_303_SEE_OTHER
+        f"/iam/organizations?organization_id={organization_id}",
+        status_code=status.HTTP_303_SEE_OTHER,
     )
 
 
@@ -1221,7 +1201,8 @@ async def organization_status_page(
     ) as error:
         return _friendly_error(request, service, identity, error)
     return RedirectResponse(
-        "/iam/organizations", status_code=status.HTTP_303_SEE_OTHER
+        f"/iam/organizations?organization_id={organization_id}",
+        status_code=status.HTTP_303_SEE_OTHER,
     )
 
 
@@ -1263,6 +1244,7 @@ async def create_user_page(
         user = service.user_admin_service.create(
             CreateUserCommand(
                 username=values.get("username", ""),
+                login_name=values.get("login_name") or None,
                 display_name=values.get("display_name", ""),
                 password=values.get("password", ""),
                 phone=values.get("phone") or None,

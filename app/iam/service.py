@@ -55,16 +55,26 @@ class IAMService:
         display_name: str,
         password_hash: str,
         phone: str | None = None,
+        login_name: str | None = None,
     ) -> User:
         if self.repository.get_user_by_username(username):
             raise DuplicateIAMCode(f"username already exists: {username}")
         user = User(
             username=username,
+            login_name=login_name or self.default_login_name(username),
             display_name=display_name,
             password_hash=password_hash,
             phone=phone,
         )
         return self._save(user)
+
+    def default_login_name(self, username: str) -> str:
+        tenant = self.repository.get_tenant(self.repository.require_tenant_id())
+        tenant_code = tenant.tenant_code if tenant is not None else "DEMO"
+        if tenant_code == "DEMO":
+            return username
+        prefix = tenant_code[5:] if tenant_code.startswith("CITY_") else tenant_code
+        return f"{prefix.lower()}.{username}"
 
     def set_password_hash(self, username: str, password_hash: str) -> User:
         user = self._require_user(username)

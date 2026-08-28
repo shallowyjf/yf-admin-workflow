@@ -86,6 +86,11 @@ USERS = (
     ("zhaoliu", "现场施工人员"),
     ("platform_ops", "平台运维人员"),
     ("water_drainage_leader", "供排水业务负责人"),
+    ("water_manager", "供水 GIS 系统管理员"),
+    ("drainage_manager", "排水 GIS 系统管理员"),
+    ("gas_manager", "燃气 GIS 系统管理员"),
+    ("heating_manager", "供热 GIS 系统管理员"),
+    ("road_manager", "道路 GIS 系统管理员"),
     ("dma_specialist", "DMA 业务专员"),
     ("hydraulic_specialist", "水力模型业务专员"),
     ("owner_pm", "供水甲方项目经理"),
@@ -348,6 +353,7 @@ def seed_iam(
                 username,
                 display_name,
                 password_hasher.hash(DEMO_INITIAL_PASSWORD),
+                login_name=service.default_login_name(username),
             )
         elif user.password_hash == "!login-disabled-until-I04":
             service.set_password_hash(
@@ -385,6 +391,36 @@ def seed_iam(
         (
             "water_drainage_leader",
             "OWNER_WATER",
+            ("BUSINESS_LEADER",),
+            ("BUSINESS_DIRECTOR",),
+        ),
+        (
+            "water_manager",
+            "OWNER_WATER",
+            ("BUSINESS_LEADER",),
+            ("BUSINESS_DIRECTOR",),
+        ),
+        (
+            "drainage_manager",
+            "OWNER_DRAINAGE",
+            ("BUSINESS_LEADER",),
+            ("BUSINESS_DIRECTOR",),
+        ),
+        (
+            "gas_manager",
+            "OWNER_GAS",
+            ("BUSINESS_LEADER",),
+            ("BUSINESS_DIRECTOR",),
+        ),
+        (
+            "heating_manager",
+            "OWNER_HEATING",
+            ("BUSINESS_LEADER",),
+            ("BUSINESS_DIRECTOR",),
+        ),
+        (
+            "road_manager",
+            "OWNER_ROAD",
             ("BUSINESS_LEADER",),
             ("BUSINESS_DIRECTOR",),
         ),

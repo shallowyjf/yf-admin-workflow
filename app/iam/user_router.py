@@ -59,6 +59,7 @@ def _response(user: User) -> UserResponse:
     return UserResponse(
         id=user.id,
         username=user.username,
+        login_name=user.login_name,
         display_name=user.display_name,
         phone=user.phone,
         is_active=user.is_active,

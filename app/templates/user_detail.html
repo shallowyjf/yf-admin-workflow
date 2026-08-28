@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="detail-head"><div><a class="back-link" href="/iam/users">← 返回用户列表</a><div class="title-line"><span class="avatar">{{ user.display_name[:1] }}</span><h2>{{ user.display_name }}</h2><span class="status">{{ '启用' if user.is_active else '停用' }}</span></div><p>@{{ user.username }}{% if user.phone %} · {{ user.phone }}{% endif %}</p></div></section>
+<section class="detail-head"><div><a class="back-link" href="/iam/users">← 返回用户列表</a><div class="title-line"><span class="avatar">{{ user.display_name[:1] }}</span><h2>{{ user.display_name }}</h2><span class="status">{{ '启用' if user.is_active else '停用' }}</span></div><p>全局登录名：{{ user.login_name }} · 租户内业务账号：{{ user.username }}{% if user.phone %} · {{ user.phone }}{% endif %}</p></div></section>
 <div class="detail-grid iam-detail-grid">
   <section>
     <div class="panel"><div class="panel-head"><div><p class="eyebrow">ORGANIZATION BINDINGS</p><h2>组织、角色与岗位</h2></div></div>

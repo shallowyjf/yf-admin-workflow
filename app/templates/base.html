@@ -37,37 +37,10 @@
         <div><p class="eyebrow">YF ADMIN WORKFLOW</p><h1>{{ page_title }}</h1></div>
         {% if profile %}
         <div class="top-actions">
-          {% if profile.applications %}
-          <form method="post" action="/active-application" class="org-switch">
-            <input type="hidden" name="next" value="{{ request.url.path }}">
-            <label for="active-application">当前系统</label>
-            <select id="active-application" name="application_id" onchange="this.form.requestSubmit()">
-              {% for application in profile.applications %}
-              <option value="{{ application.id }}"{% if application.id == profile.active_application_id %} selected{% endif %}>{{ application.application_name }}</option>
-              {% endfor %}
-            </select>
-          </form>
-          {% endif %}
-          {% if profile.projects %}
-          <form method="post" action="/active-project" class="org-switch">
-            <input type="hidden" name="next" value="{{ request.url.path }}">
-            <label for="active-project">当前项目</label>
-            <select id="active-project" name="project_id" onchange="this.form.requestSubmit()">
-              {% for project in profile.projects if project.application_id == profile.active_application_id %}
-              <option value="{{ project.id }}"{% if project.id == profile.active_project_id %} selected{% endif %}>{{ project.project_name }}</option>
-              {% endfor %}
-            </select>
-          </form>
-          {% endif %}
-          <form method="post" action="/active-org" class="org-switch">
-            <input type="hidden" name="next" value="{{ request.url.path }}">
-            <label for="active-org">当前组织</label>
-            <select id="active-org" name="org_id" onchange="this.form.requestSubmit()">
-              {% for org in profile.organizations %}
-              <option value="{{ org.id }}"{% if org.id == profile.active_org_id %} selected{% endif %}>{{ org.org_name }}</option>
-              {% endfor %}
-            </select>
-          </form>
+          <div class="top-user" data-testid="current-login-user" title="当前登录用户">
+            <span class="top-user-avatar">{{ profile.display_name[:1] }}</span>
+            <span><strong>@{{ profile.login_name }}</strong><small>{{ profile.display_name }}</small></span>
+          </div>
           <form method="post" action="/logout"><button class="button ghost" type="submit">退出</button></form>
         </div>
         {% endif %}

@@ -68,6 +68,7 @@ class AuthProfile:
     tenant_code: str
     tenant_name: str
     username: str
+    login_name: str
     display_name: str
     active_org_id: int
     active_application_id: int | None
@@ -105,18 +106,16 @@ class AuthService:
         self,
         username: str,
         password: str,
-        tenant_code: str | None = None,
     ) -> LoginResult:
-        normalized_tenant_code = (tenant_code or self.default_tenant_code).strip().upper()
-        tenant = self.repository.get_tenant_by_code(normalized_tenant_code)
-        if tenant is None or not tenant.is_active:
-            raise AuthenticationError("invalid tenant or credentials")
-        user = self.repository.get_user_by_username(username, tenant.id)
+        user = self.repository.get_user_by_login_name(username)
         if (
             user is None
             or not user.is_active
             or not self.password_hasher.verify(password, user.password_hash)
         ):
+            raise AuthenticationError("invalid username or password")
+        tenant = self.repository.get_tenant(user.tenant_id)
+        if tenant is None or not tenant.is_active:
             raise AuthenticationError("invalid username or password")
 
         return self.create_tenant_session(user.id, tenant.id)
@@ -342,6 +341,7 @@ class AuthService:
             tenant_code=auth_session.tenant.tenant_code,
             tenant_name=auth_session.tenant.tenant_name,
             username=user.username,
+            login_name=user.login_name,
             display_name=user.display_name,
             active_org_id=context.active_org_id,
             active_application_id=context.active_application_id,

@@ -27,6 +27,9 @@ class PlatformAuthService:
         self.session_hours = session_hours
         self.password_hasher = PasswordHasher()
 
+    def is_platform_identity(self, username: str) -> bool:
+        return self.repository.get_platform_user(username.strip()) is not None
+
     def login(self, username: str, password: str) -> str:
         user = self.repository.get_platform_user(username.strip())
         if (

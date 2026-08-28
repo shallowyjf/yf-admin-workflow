@@ -40,6 +40,7 @@ class CreateUserCommand:
     display_name: str
     password: str
     phone: str | None = None
+    login_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -108,10 +109,24 @@ class UserAdministrationService:
             )
         if self.repository.get_user_by_username(username) is not None:
             raise DuplicateIAMCode(f"username already exists: {username}")
+        login_name = (
+            command.login_name.strip().lower()
+            if command.login_name
+            else self._default_login_name(username)
+        )
+        if not self.USERNAME_PATTERN.fullmatch(login_name):
+            raise IAMAdministrationValidationError(
+                "登录账号须以小写字母开头，且只能包含小写字母、数字、点、横线和下划线"
+            )
+        if login_name == "root":
+            raise IAMAdministrationValidationError("root 是平台保留登录名")
+        if self.repository.get_user_by_login_name(login_name) is not None:
+            raise DuplicateIAMCode(f"login name already exists: {login_name}")
         display_name = self._required_display_name(command.display_name)
         self._validate_password(command.password)
         user = User(
             username=username,
+            login_name=login_name,
             display_name=display_name,
             password_hash=self.password_hasher.hash(command.password),
             phone=self._optional_text(command.phone),
@@ -126,6 +141,14 @@ class UserAdministrationService:
         )
         self.repository.commit()
         return self._require_user(user.id)
+
+    def _default_login_name(self, username: str) -> str:
+        tenant = self.repository.get_tenant(self.repository.require_tenant_id())
+        tenant_code = tenant.tenant_code if tenant is not None else "DEMO"
+        if tenant_code == "DEMO":
+            return username
+        prefix = tenant_code[5:] if tenant_code.startswith("CITY_") else tenant_code
+        return f"{prefix.lower()}.{username}"
 
     def update(
         self,
@@ -402,6 +425,7 @@ class UserAdministrationService:
     def _user_snapshot(user: User) -> dict:
         return {
             "username": user.username,
+            "login_name": user.login_name,
             "display_name": user.display_name,
             "phone": user.phone,
             "is_active": user.is_active,
