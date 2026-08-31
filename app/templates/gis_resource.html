@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="detail-head"><div><a class="back-link" href="/data-resources">← 返回数据资源</a><div class="title-line"><h2>{{ gis_resource.resource_name }}</h2><span class="status status-processing">{{ gis_query.coordinate_precision }}</span></div><p>{{ gis_resource.resource_key }} · 服务端按角色空间范围、字段策略和坐标精度裁剪</p></div><a class="button ghost" href="/docs#/gis-permissions">导出 API</a></div>
+
+<section class="stats-grid">
+  <article class="stat-card"><span>可见设施</span><strong>{{ gis_query.features|length }}</strong><small>范围外设施不进入响应</small></article>
+  <article class="stat-card"><span>返回字段</span><strong>{{ gis_query.fields|length }}</strong><small>隐藏字段不返回键名</small></article>
+  <article class="stat-card"><span>空间授权</span><strong>{{ gis_query.spatial_scopes|length }}</strong><small>{{ gis_query.spatial_scopes|join(' · ') }}</small></article>
+  <article class="stat-card accent"><span>坐标精度</span><strong>{{ gis_query.coordinate_precision }}</strong><small>无精确坐标权限时自动泛化</small></article>
+</section>
+
+<div class="split-grid gis-permission-grid">
+  <section class="panel gis-map-panel">
+    <div class="panel-head"><div><p class="eyebrow">AUTHORIZED MAP</p><h2>授权设施空间预览</h2></div></div>
+    <div class="gis-map-canvas permission-map">
+      <div class="gis-river"></div><div class="gis-road road-a"></div><div class="gis-road road-b"></div>
+      {% for feature in gis_query.features %}<span class="gis-marker" style="left:{{ 13 + loop.index * 21 }}%;top:{{ 22 + (loop.index % 2) * 34 }}%"><i></i><b>{{ feature.feature_name }}</b></span>{% endfor %}
+      <div class="gis-map-label">仅绘制 API 已授权返回的设施</div>
+    </div>
+  </section>
+  <section class="panel">
+    <div class="panel-head"><div><p class="eyebrow">FIELD POLICY</p><h2>字段可见策略</h2></div></div>
+    {% for field in gis_query.fields %}<div class="gis-layer"><i></i><span>{{ field.field_name }}<small>{{ field.field_code }}</small></span><em>{{ field.access_mode }}</em></div>{% endfor %}
+  </section>
+</div>
+
+<section class="panel">
+  <div class="panel-head"><div><p class="eyebrow">FILTERED FEATURES</p><h2>服务端裁剪结果</h2></div><small>直接调用接口也只返回下列范围与字段</small></div>
+  <div class="table-wrap"><table><thead><tr><th>设施</th><th>范围</th><th>坐标</th>{% for field in gis_query.fields %}<th>{{ field.field_name }}</th>{% endfor %}</tr></thead><tbody>
+    {% for feature in gis_query.features %}<tr><td><strong>{{ feature.feature_name }}</strong><span class="cell-sub">{{ feature.feature_key }}</span></td><td>{{ feature.scope_type }} / {{ feature.scope_value }}</td><td>{% if feature.longitude is not none %}{{ feature.longitude }}, {{ feature.latitude }}{% else %}<span class="muted">区域级隐藏</span>{% endif %}</td>{% for field in gis_query.fields %}<td>{{ feature.properties.get(field.field_code, '-') }}</td>{% endfor %}</tr>{% else %}<tr><td colspan="8" class="empty">当前空间范围内没有设施</td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+{% endblock %}

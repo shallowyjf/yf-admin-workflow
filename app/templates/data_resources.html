@@ -32,7 +32,7 @@
         <td><span class="status">{{ resource.resource_type }}</span></td>
         <td><span class="stage stage-{{ resource.derivation_stage|lower }}">{{ resource.derivation_stage }}</span></td>
         <td>{{ resource.sensitivity_level }}</td>
-        <td><a href="/api/data-permissions/resources/{{ resource.id }}/authorization-explain">查看决策链 →</a></td>
+        <td>{% if resource.resource_type == 'GIS_LAYER' %}<a href="/gis-resources/{{ resource.id }}">空间预览 →</a><br>{% endif %}<a href="/api/data-permissions/resources/{{ resource.id }}/authorization-explain">查看决策链 →</a></td>
       </tr>{% else %}<tr><td colspan="6" class="empty">当前账号未通过任何资源的完整授权链。</td></tr>{% endfor %}
     </tbody>
   </table></div>

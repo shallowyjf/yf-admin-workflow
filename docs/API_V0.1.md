@@ -20,6 +20,11 @@
 | Data permission | `POST /api/data-permissions/spaces`、`POST /api/data-permissions/resources` | 管理员创建数据空间与资源目录 |
 | Data permission | `PUT /api/data-permissions/applications/{id}/roles` | 给组织成员配置系统内角色 |
 | Data permission | `POST /api/data-permissions/resources/{id}/policies` | 配置角色级资源 ALLOW/DENY 策略 |
+| GIS permission | `GET /api/gis/resources/{id}/features` | 按角色空间范围裁剪设施、字段和坐标精度 |
+| GIS permission | `POST /api/gis/resources/{id}/exports`、`GET /api/gis/exports` | 创建并查询当前用户隔离的模拟导出审计任务 |
+| GIS permission | `POST /api/gis/resources/{id}/fields` | 配置 GIS 图层字段目录 |
+| GIS permission | `PUT /api/gis/fields/{id}/policy` | 配置角色字段 VISIBLE/MASKED/HIDDEN 策略 |
+| GIS permission | `POST /api/gis/resources/{id}/spatial-scopes` | 配置角色行政区、DMA、项目红线等空间范围和坐标精度 |
 | Auth | `POST /auth/active-application`、`POST /auth/active-project` | 切换活动生命线系统和工程项目 |
 | Organization | `GET/POST /api/orgs` | 列表、新增 |
 | Organization | `GET /api/orgs/tree` | 组织树 |

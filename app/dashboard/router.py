@@ -30,8 +30,16 @@ from app.auth.service import (
     RequestContext,
 )
 from app.data_permission.repository import DataPermissionRepository
-from app.data_permission.service import DataActor, DataPermissionService, resource_item
+from app.data_permission.service import (
+    DataActor,
+    DataPermissionDenied,
+    DataPermissionService,
+    DataResourceNotFound,
+    resource_item,
+)
 from app.db.dependencies import get_db_session
+from app.gis_permission.repository import GISPermissionRepository
+from app.gis_permission.service import GISPermissionService
 from app.iam.admin_service import (
     CreateOrganizationCommand,
     IAMAdministrationActor,
@@ -205,6 +213,19 @@ def get_page_data_permission_service(
     return DataPermissionService(
         DataPermissionRepository(session, identity.context.tenant_id),
         PermissionService(iam_repository),
+    )
+
+
+def get_page_gis_permission_service(
+    session: Annotated[Session, Depends(get_db_session)],
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+) -> GISPermissionService:
+    iam_repository = IAMRepository(session, identity.context.tenant_id)
+    data_repository = DataPermissionRepository(session, identity.context.tenant_id)
+    return GISPermissionService(
+        GISPermissionRepository(session, identity.context.tenant_id),
+        data_repository,
+        DataPermissionService(data_repository, PermissionService(iam_repository)),
     )
 
 
@@ -454,6 +475,46 @@ def data_resources_page(
             "application_roles": grants,
             "selected_application_id": application_id,
         },
+    )
+
+
+@router.get(
+    "/gis-resources/{resource_id}",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def gis_resource_page(
+    resource_id: int,
+    request: Request,
+    identity: Annotated[PageIdentity, Depends(get_page_identity)],
+    dashboard_service: Annotated[DashboardService, Depends(get_dashboard_service)],
+    gis_service: Annotated[
+        GISPermissionService, Depends(get_page_gis_permission_service)
+    ],
+) -> HTMLResponse:
+    try:
+        result = gis_service.query_features(
+            resource_id,
+            DataActor(identity.profile.user_id, identity.profile.active_org_id),
+        )
+        resource = gis_service.data_repository.get_resource(resource_id)
+        assert resource is not None
+    except DataPermissionDenied as error:
+        return _friendly_error(
+            request, dashboard_service, identity, PageAccessDenied(str(error))
+        )
+    except DataResourceNotFound as error:
+        return _friendly_error(
+            request, dashboard_service, identity, IAMEntityNotFound(str(error))
+        )
+    return _page(
+        request,
+        dashboard_service,
+        identity,
+        "gis_resource.html",
+        f"{resource.resource_name} · GIS 权限预览",
+        "data-resources",
+        {"gis_resource": resource, "gis_query": result},
     )
 
 

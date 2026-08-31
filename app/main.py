@@ -21,6 +21,7 @@ from app.dashboard.router import (
 )
 from app.data_permission.router import router as data_permission_router
 from app.db.session import Database
+from app.gis_permission.router import router as gis_permission_router
 from app.iam.bulk_router import router as iam_bulk_router
 from app.iam.dictionary_router import router as iam_dictionary_router
 from app.iam.role_router import router as iam_role_router
@@ -70,6 +71,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(operation_router)
     application.include_router(project_router)
     application.include_router(data_permission_router)
+    application.include_router(gis_permission_router)
     application.include_router(work_order_router)
     application.include_router(workflow_router)
     application.include_router(dashboard_router)

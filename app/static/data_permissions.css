@@ -12,3 +12,6 @@
 .permission-chain i{color:var(--teal);font-style:normal;font-weight:800}
 .permission-chain .decision{background:var(--teal-soft);border-color:#b7e4de}
 @media(max-width:900px){.app-role-grid{grid-template-columns:1fr}.permission-chain{justify-content:flex-start}}
+.gis-permission-grid{grid-template-columns:minmax(0,1.4fr) minmax(280px,.6fr)}
+.permission-map{min-height:390px}
+.gis-layer span{display:flex;flex-direction:column;gap:3px}.gis-layer small{color:var(--muted);font-family:monospace;font-size:10px}

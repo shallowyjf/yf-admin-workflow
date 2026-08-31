@@ -10,8 +10,13 @@ from app.db.base import Base
 def test_shared_declarative_base_contains_current_tables() -> None:
     assert set(Base.metadata.tables) == {
         "auth_resource_policy",
+        "auth_resource_field_policy",
+        "auth_spatial_scope_grant",
         "dc_business_resource",
         "dc_data_space",
+        "dc_gis_export_job",
+        "dc_gis_feature",
+        "dc_resource_field",
         "iam_application_role_grant",
         "pm_project",
         "pm_project_member",

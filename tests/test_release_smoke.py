@@ -7,7 +7,7 @@ def test_empty_database_configures_iam_and_closes_dma(tmp_path) -> None:
     result = run_release_smoke(f"sqlite:///{database_path.as_posix()}")
 
     assert result.migration_revision == "head"
-    assert result.table_count == 38
+    assert result.table_count == 43
     assert result.configured_username == "release.smoke"
     assert result.configured_permission == "acceptance:view"
     assert result.authorization_effective is True
@@ -15,6 +15,8 @@ def test_empty_database_configures_iam_and_closes_dma(tmp_path) -> None:
     assert result.lifeline_systems == 6
     assert result.data_spaces == 6
     assert result.data_resources == 10
+    assert result.gis_fields == 15
+    assert result.gis_features == 9
     assert result.lifeline_projects == 6
     assert result.dma_final_status == "CLOSED"
     assert result.dma_timeline == (

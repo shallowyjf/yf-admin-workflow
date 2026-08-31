@@ -17,6 +17,8 @@ from app.data_permission.repository import DataPermissionRepository
 from app.data_permission.seed import seed_data_permissions
 from app.db.session import Database
 from app.demo.dma_workflow_demo import run_dma_demo
+from app.gis_permission.repository import GISPermissionRepository
+from app.gis_permission.seed import seed_gis_permissions
 from app.iam.admin_service import IAMAdministrationActor
 from app.iam.authorization import DataScopeType, PermissionService
 from app.iam.dictionary_admin_service import (
@@ -60,6 +62,8 @@ class ReleaseSmokeResult:
     lifeline_projects: int
     data_spaces: int
     data_resources: int
+    gis_fields: int
+    gis_features: int
     dma_final_status: str
     dma_timeline: tuple[str, ...]
 
@@ -86,6 +90,11 @@ def run_release_smoke(database_url: str) -> ReleaseSmokeResult:
                 iam_service,
             )
             data_summary = seed_data_permissions(
+                DataPermissionRepository(session, repository.require_tenant_id()),
+                iam_service,
+            )
+            gis_summary = seed_gis_permissions(
+                GISPermissionRepository(session, repository.require_tenant_id()),
                 DataPermissionRepository(session, repository.require_tenant_id()),
                 iam_service,
             )
@@ -192,6 +201,8 @@ def run_release_smoke(database_url: str) -> ReleaseSmokeResult:
             lifeline_projects=project_summary.projects,
             data_spaces=data_summary.data_spaces,
             data_resources=data_summary.resources,
+            gis_fields=gis_summary.fields,
+            gis_features=gis_summary.features,
             dma_final_status=dma.final_status,
             dma_timeline=dma.timeline_actions,
         )
