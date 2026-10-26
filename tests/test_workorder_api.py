@@ -134,6 +134,8 @@ def test_api_enforces_create_permission_and_view_data_scope(
 def test_i08_task_actions_enforce_access_and_state_transitions(
     work_order_client: TestClient,
 ) -> None:
+    regulator_profile = _login(work_order_client, "regulator")
+    regulator_org_id = _org_id(regulator_profile, "REGULATOR")
     wangwu_profile = _login(work_order_client, "wangwu")
     pipe_org_id = _org_id(wangwu_profile, "PIPE_OPERATION")
     created = _create(work_order_client, "I08 任务动作").json()
@@ -203,10 +205,15 @@ def test_i08_task_actions_enforce_access_and_state_transitions(
     _login(work_order_client, "lisi")
     submitted_result = work_order_client.post(
         f"/api/workorders/{work_order_id}/result",
-        json={"result": "已修复漏点", "comment": "等待复核"},
+        json={
+            "result": "已修复漏点",
+            "comment": "等待复核",
+            "review_org_id": regulator_org_id,
+        },
     )
     assert submitted_result.status_code == 200
     assert submitted_result.json()["status"] == "PENDING_REVIEW"
+    assert submitted_result.json()["current_org_id"] == regulator_org_id
 
     _login(work_order_client, "admin")
     assert (
@@ -217,13 +224,19 @@ def test_i08_task_actions_enforce_access_and_state_transitions(
         == 403
     )
 
-    _login(work_order_client, "wangwu")
+    _login(work_order_client, "regulator")
+    review_tasks = work_order_client.get("/api/tasks/mine").json()
+    assert len(review_tasks) == 1
+    assert review_tasks[0]["business_id"] == work_order_id
+    assert review_tasks[0]["task_type"] == "REVIEW"
+    assert work_order_client.get(f"/api/workorders/{work_order_id}").status_code == 200
     rejected = work_order_client.post(
         f"/api/workorders/{work_order_id}/review",
         json={"decision": "REJECT", "comment": "补充处理结果"},
     )
     assert rejected.status_code == 200
     assert rejected.json()["status"] == "PROCESSING"
+    assert rejected.json()["current_org_id"] == pipe_org_id
 
     _login(work_order_client, "lisi")
     returned_tasks = work_order_client.get("/api/tasks/mine").json()
@@ -233,18 +246,22 @@ def test_i08_task_actions_enforce_access_and_state_transitions(
     assert (
         work_order_client.post(
             f"/api/workorders/{work_order_id}/result",
-            json={"result": "已补充现场照片"},
+            json={
+                "result": "已补充现场照片",
+                "review_org_id": regulator_org_id,
+            },
         ).status_code
         == 200
     )
 
-    _login(work_order_client, "wangwu")
+    _login(work_order_client, "regulator")
     approved = work_order_client.post(
         f"/api/workorders/{work_order_id}/review",
         json={"decision": "APPROVE"},
     )
     assert approved.status_code == 200
     assert approved.json()["status"] == "COMPLETED"
+    _login(work_order_client, "wangwu")
     closed = work_order_client.post(
         f"/api/workorders/{work_order_id}/close",
         json={"comment": "关闭工单"},
@@ -258,6 +275,8 @@ def test_i08_task_actions_enforce_access_and_state_transitions(
 def test_i16_transfer_comment_and_urge_keep_workflow_and_timeline_consistent(
     work_order_client: TestClient,
 ) -> None:
+    regulator = _login(work_order_client, "regulator")
+    regulator_org_id = _org_id(regulator, "REGULATOR")
     wangwu = _login(work_order_client, "wangwu")
     pipe_org_id = _org_id(wangwu, "PIPE_OPERATION")
     work_order_id = _create(work_order_client, "I16 协作工单").json()["id"]
@@ -332,12 +351,15 @@ def test_i16_transfer_comment_and_urge_keep_workflow_and_timeline_consistent(
     assert (
         work_order_client.post(
             f"/api/workorders/{work_order_id}/result",
-            json={"result": "赵六完成现场处理"},
+            json={
+                "result": "赵六完成现场处理",
+                "review_org_id": regulator_org_id,
+            },
         ).status_code
         == 200
     )
 
-    _login(work_order_client, "zhangsan")
+    _login(work_order_client, "regulator")
     timeline = work_order_client.get(
         f"/api/workorders/{work_order_id}/timeline"
     ).json()

@@ -205,7 +205,6 @@ class IAMBulkService:
                     is_primary=bool(item.get("is_primary", False)),
                     is_active=bool(item.get("is_active", True)),
                     role_codes=tuple(item.get("role_codes", ())),
-                    position_codes=tuple(item.get("position_codes", ())),
                 )
                 for item in record["memberships"]
             )
@@ -272,10 +271,6 @@ class IAMBulkService:
                     "is_active": membership.is_active,
                     "role_codes": sorted(
                         link.role.role_code for link in membership.role_links
-                    ),
-                    "position_codes": sorted(
-                        link.position.position_code
-                        for link in membership.position_links
                     ),
                 }
                 for membership in item.memberships

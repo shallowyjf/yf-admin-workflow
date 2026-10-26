@@ -38,7 +38,7 @@ def _org_id(service: IAMService, org_code: str) -> int:
     return organization.id
 
 
-def test_registry_supports_all_five_candidate_types(
+def test_registry_supports_all_candidate_types(
     candidate_environment: tuple[IAMService, CandidateResolverRegistry],
 ) -> None:
     _, resolver = candidate_environment
@@ -93,22 +93,6 @@ def test_org_role_resolves_repairers_in_exact_organization(
     assert dispatch_result == set()
 
 
-def test_org_position_resolves_department_manager(
-    candidate_environment: tuple[IAMService, CandidateResolverRegistry],
-) -> None:
-    service, resolver = candidate_environment
-
-    result = resolver.resolve(
-        CandidateRule(
-            CandidateType.ORG_POSITION,
-            org_id=_org_id(service, "PIPE_OPERATION"),
-            position_code="DEPT_MANAGER",
-        )
-    )
-
-    assert result == {_user_id(service, "zhangsan")}
-
-
 def test_inactive_user_and_membership_are_filtered(
     candidate_environment: tuple[IAMService, CandidateResolverRegistry],
     db_session: Session,
@@ -134,17 +118,15 @@ def test_inactive_user_and_membership_are_filtered(
     ) == set()
 
 
-def test_inactive_org_role_and_position_are_filtered(
+def test_inactive_org_and_role_are_filtered(
     candidate_environment: tuple[IAMService, CandidateResolverRegistry],
     db_session: Session,
 ) -> None:
     service, resolver = candidate_environment
     pipe_org = service.get_organization("PIPE_OPERATION")
     repairer_role = service.get_role("REPAIRER")
-    manager_position = service.get_position("DEPT_MANAGER")
     assert pipe_org is not None
     assert repairer_role is not None
-    assert manager_position is not None
 
     pipe_org.is_active = False
     db_session.commit()
@@ -163,16 +145,6 @@ def test_inactive_org_role_and_position_are_filtered(
         )
     ) == set()
 
-    repairer_role.is_active = True
-    manager_position.is_active = False
-    db_session.commit()
-    assert resolver.resolve(
-        CandidateRule(
-            CandidateType.ORG_POSITION,
-            org_id=pipe_org.id,
-            position_code="DEPT_MANAGER",
-        )
-    ) == set()
 
 
 def test_role_resolver_deduplicates_user_across_organizations(
@@ -196,7 +168,6 @@ def test_role_resolver_deduplicates_user_across_organizations(
         CandidateRule(CandidateType.USER),
         CandidateRule(CandidateType.ORG, org_id=0),
         CandidateRule(CandidateType.ORG_ROLE, org_id=1),
-        CandidateRule(CandidateType.ORG_POSITION, position_code="REPAIRER"),
         CandidateRule("UNKNOWN"),
     ],
 )

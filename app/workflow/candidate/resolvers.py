@@ -70,18 +70,6 @@ class OrganizationRoleCandidateResolver:
         )
 
 
-@dataclass(frozen=True)
-class OrganizationPositionCandidateResolver:
-    identity_queries: IdentityQueryPort
-    candidate_type = CandidateType.ORG_POSITION
-
-    def resolve(self, rule: CandidateRule) -> set[int]:
-        return self.identity_queries.users_by_position(
-            _required_code(rule.position_code, "position_code"),
-            _required_id(rule.org_id, "org_id"),
-        )
-
-
 class CandidateResolverRegistry:
     def __init__(self, resolvers: list[CandidateResolver]) -> None:
         self._resolvers: dict[CandidateType, CandidateResolver] = {}
@@ -103,7 +91,6 @@ class CandidateResolverRegistry:
                 RoleCandidateResolver(identity_queries),
                 OrganizationCandidateResolver(identity_queries),
                 OrganizationRoleCandidateResolver(identity_queries),
-                OrganizationPositionCandidateResolver(identity_queries),
             ]
         )
 

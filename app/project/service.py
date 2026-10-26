@@ -291,6 +291,55 @@ class ProjectService:
                 allowed.add(user_id)
         return allowed
 
+    def operational_role_organizations(
+        self,
+        project_id: int,
+        role_code: str,
+        permission_code: str,
+    ) -> list | None:
+        """Return project organizations with an effective member for one role.
+
+        ``None`` means that the legacy installation has no project catalogue and
+        should keep its compatibility fallback.  An empty list means that a
+        project exists but has no eligible organization and the operation must
+        be rejected.
+        """
+
+        if not self.repository.list_projects():
+            return None
+        project = self._require_project(project_id)
+        if project.project_status != "ACTIVE":
+            return []
+        normalized_role = role_code.strip().upper()
+        organizations = {}
+        for member in project.members:
+            membership = member.membership
+            user = membership.user
+            if (
+                not member.is_active
+                or member.role.role_code != normalized_role
+                or not member.role.is_active
+                or not membership.is_active
+                or not membership.organization.is_active
+                or not user.is_active
+                or not self.repository.role_has_permission(
+                    member.role_id, permission_code
+                )
+                or project.application_id
+                not in {
+                    application.id
+                    for application in self.repository.list_user_applications(
+                        user.id
+                    )
+                }
+                or not self.permission_service.has_permission(
+                    user.id, permission_code, membership.org_id
+                )
+            ):
+                continue
+            organizations[membership.organization.id] = membership.organization
+        return [organizations[key] for key in sorted(organizations)]
+
     def create(
         self,
         command: CreateProjectCommand,

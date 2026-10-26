@@ -33,14 +33,12 @@ def test_shared_declarative_base_contains_current_tables() -> None:
         "sys_tenant_application",
         "sys_org",
         "sys_permission",
-        "sys_position",
         "sys_role",
         "sys_role_data_scope",
         "sys_role_permission",
         "sys_user",
         "sys_user_application",
         "sys_user_org",
-        "sys_user_org_position",
         "sys_user_org_role",
         "wf_definition",
         "wf_instance",
@@ -102,6 +100,24 @@ def test_i19_migration_creates_tenant_scoped_iam(tmp_path: Path) -> None:
     assert "tenant_id" not in {
         column["name"] for column in inspector.get_columns("sys_user")
     }
+    engine.dispose()
+
+
+def test_i26_migration_removes_position_tables(tmp_path: Path) -> None:
+    database_path = tmp_path / "i26.db"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    config = Config("alembic.ini")
+    config.set_main_option("sqlalchemy.url", database_url)
+
+    command.upgrade(config, "head")
+    engine = create_engine(database_url)
+    table_names = set(inspect(engine).get_table_names())
+    assert "sys_position" not in table_names
+    assert "sys_user_org_position" not in table_names
+
+    command.downgrade(config, "0018_i25_gis_permissions")
+    table_names = set(inspect(engine).get_table_names())
+    assert {"sys_position", "sys_user_org_position"} <= table_names
     engine.dispose()
 
 

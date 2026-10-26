@@ -34,14 +34,11 @@
 | User | `GET/PUT /api/users/{id}` | 详情、资料编辑 |
 | User | `POST /api/users/{id}/status` | 启停并撤销会话 |
 | User | `POST /api/users/{id}/password` | 管理员重置密码并撤销会话 |
-| User | `PUT /api/users/{id}/memberships` | 原子替换多组织角色/岗位关系 |
+| User | `PUT /api/users/{id}/memberships` | 原子替换多组织与组织内角色关系 |
 | Role | `GET/POST /api/roles` | 列表、新增 |
 | Role | `GET/PUT /api/roles/{id}` | 详情、编辑 |
 | Role | `POST /api/roles/{id}/status` | 启停 |
 | Role | `PUT /api/roles/{id}/authorization` | 原子替换 Permission + DataScope |
-| Position | `GET/POST /api/positions` | 列表、新增 |
-| Position | `GET/PUT/DELETE /api/positions/{id}` | 详情、编辑、安全删除 |
-| Position | `POST /api/positions/{id}/status` | 启停 |
 | Permission | `GET/POST /api/permissions` | 字典列表、新增 |
 | Permission | `GET/PUT/DELETE /api/permissions/{id}` | 详情、描述编辑、安全删除 |
 | Audit | `GET /api/iam/audit-logs` | 按实体、动作、操作人分页过滤 |

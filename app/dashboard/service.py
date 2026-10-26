@@ -13,7 +13,6 @@ from app.iam.dictionary_admin_service import (
     IAMAuditFilter,
     IAMAuditQueryService,
     PermissionDictionaryService,
-    PositionAdministrationService,
 )
 from app.iam.permission_catalog import BUILT_IN_PERMISSION_CODES
 from app.iam.role_admin_service import RoleAdministrationService
@@ -64,7 +63,6 @@ class DashboardService:
         "organizations": "system:org:view",
         "users": "system:user:view",
         "roles": "system:role:view",
-        "positions": "system:position:view",
         "permissions": "system:permission:view",
         "audit": "system:audit:view",
     }
@@ -78,7 +76,6 @@ class DashboardService:
         organization_admin_service: OrganizationAdministrationService,
         user_admin_service: UserAdministrationService,
         role_admin_service: RoleAdministrationService,
-        position_admin_service: PositionAdministrationService,
         permission_dictionary_service: PermissionDictionaryService,
         iam_audit_query_service: IAMAuditQueryService,
         attachment_service: WorkOrderAttachmentService,
@@ -92,7 +89,6 @@ class DashboardService:
         self.organization_admin_service = organization_admin_service
         self.user_admin_service = user_admin_service
         self.role_admin_service = role_admin_service
-        self.position_admin_service = position_admin_service
         self.permission_dictionary_service = permission_dictionary_service
         self.iam_audit_query_service = iam_audit_query_service
         self.attachment_service = attachment_service
@@ -142,7 +138,6 @@ class DashboardService:
             ("organizations", "组织管理", "/iam/organizations"),
             ("users", "用户管理", "/iam/users"),
             ("roles", "角色管理", "/iam/roles"),
-            ("positions", "岗位管理", "/iam/positions"),
             ("permissions", "权限管理", "/iam/permissions"),
             ("audit", "IAM 审计", "/iam/audit"),
         ]
@@ -414,9 +409,6 @@ class DashboardService:
                     "is_primary": membership.is_primary,
                     "is_active": membership.is_active,
                     "role_codes": {link.role.role_code for link in membership.role_links},
-                    "position_codes": {
-                        link.position.position_code for link in membership.position_links
-                    },
                 }
                 for membership in user.memberships
             }
@@ -426,7 +418,6 @@ class DashboardService:
             "users": users,
             "organizations": self.iam_service.list_organizations(),
             "roles": self.iam_service.list_roles(),
-            "positions": self.iam_service.list_positions(),
             "membership_forms": membership_forms,
             "user_capabilities": {
                 "create": "system:user:create" in permissions,
@@ -479,26 +470,6 @@ class DashboardService:
     def role_detail(self, profile: AuthProfile, role_id: int) -> dict:
         context = self.roles(profile)
         context["role"] = self._find_entity(context["roles"], role_id, "角色")
-        return context
-
-    def positions(self, profile: AuthProfile) -> dict:
-        self._require_system_page(profile, "positions")
-        permissions = set(profile.permission_codes)
-        positions = self.iam_service.list_positions()
-        return {
-            "positions": positions,
-            "position_bindings": self._position_bindings(self.iam_service.list_users()),
-            "position_capabilities": {
-                "create": "system:position:create" in permissions,
-                "update": "system:position:update" in permissions,
-                "status": "system:position:status" in permissions,
-                "delete": "system:position:delete" in permissions,
-            },
-        }
-
-    def position_detail(self, profile: AuthProfile, position_id: int) -> dict:
-        context = self.positions(profile)
-        context["position"] = self._find_entity(context["positions"], position_id, "岗位")
         return context
 
     def permissions(self, profile: AuthProfile) -> dict:
@@ -589,6 +560,9 @@ class DashboardService:
         timeline = self.work_order_service.timeline(work_order_id, actor)
         tasks = self.workflow_service.list_my_tasks(profile.user_id)
         matching_tasks = [task for task in tasks if task.instance.business_id == work_order_id]
+        review_organizations = self.work_order_service.review_organizations(work_order)
+        if review_organizations is None:
+            review_organizations = self._role_organizations("REVIEWER")
         return {
             "work_order": work_order,
             "timeline": timeline,
@@ -599,6 +573,7 @@ class DashboardService:
                 for organization in self.iam_service.list_organizations()
                 if organization.is_active
             ],
+            "review_organizations": review_organizations,
             "transfer_targets": [
                 user
                 for user in self.iam_service.list_users()
@@ -615,6 +590,24 @@ class DashboardService:
             ),
             "can_upload_attachment": "workorder:attachment" in profile.permission_codes,
         }
+
+    def _role_organizations(self, role_code: str) -> list:
+        organization_ids = {
+            membership.org_id
+            for user in self.iam_service.list_users()
+            if user.is_active
+            for membership in user.memberships
+            if membership.is_active
+            and any(
+                link.role.is_active and link.role.role_code == role_code
+                for link in membership.role_links
+            )
+        }
+        return [
+            organization
+            for organization in self.iam_service.list_organizations()
+            if organization.is_active and organization.id in organization_ids
+        ]
 
     def notifications(self, profile: AuthProfile) -> dict:
         return {"notifications": self.notification_service.list_for_user(profile.user_id)}
@@ -691,17 +684,6 @@ class DashboardService:
             for membership in user.memberships:
                 for link in membership.role_links:
                     result.setdefault(link.role_id, []).append(
-                        {"user": user, "membership": membership}
-                    )
-        return result
-
-    @staticmethod
-    def _position_bindings(users: list) -> dict[int, list[dict]]:
-        result: dict[int, list[dict]] = {}
-        for user in users:
-            for membership in user.memberships:
-                for link in membership.position_links:
-                    result.setdefault(link.position_id, []).append(
                         {"user": user, "membership": membership}
                     )
         return result

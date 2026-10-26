@@ -1,10 +1,9 @@
-"""Permission-checked position, permission dictionary, and IAM audit use cases."""
+"""Permission-checked permission dictionary and IAM audit use cases."""
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Protocol
 
 from .admin_service import (
     IAMAdministrationActor,
@@ -13,25 +12,10 @@ from .admin_service import (
     IAMAdministrationValidationError,
 )
 from .authorization import PermissionService
-from .models import IAMAuditLog, Permission, Position
+from .models import IAMAuditLog, Permission
 from .permission_catalog import BUILT_IN_PERMISSION_CODES
 from .repository import IAMRepository
 from .service import DuplicateIAMCode, IAMEntityNotFound
-
-
-class PositionReferencePort(Protocol):
-    def count_position_references(self, position_code: str) -> int: ...
-
-
-@dataclass(frozen=True)
-class CreatePositionCommand:
-    position_code: str
-    position_name: str
-
-
-@dataclass(frozen=True)
-class UpdatePositionCommand:
-    position_name: str
 
 
 @dataclass(frozen=True)
@@ -113,150 +97,6 @@ class _PermissionCheckedService:
             return None
         normalized = value.strip()
         return normalized or None
-
-
-class PositionAdministrationService(_PermissionCheckedService):
-    VIEW_PERMISSION = "system:position:view"
-    CREATE_PERMISSION = "system:position:create"
-    UPDATE_PERMISSION = "system:position:update"
-    STATUS_PERMISSION = "system:position:status"
-    DELETE_PERMISSION = "system:position:delete"
-    CODE_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]{1,79}$")
-
-    def __init__(
-        self,
-        repository: IAMRepository,
-        permission_service: PermissionService,
-        workflow_references: PositionReferencePort,
-    ) -> None:
-        super().__init__(repository, permission_service)
-        self.workflow_references = workflow_references
-
-    def list_positions(self, actor: IAMAdministrationActor) -> list[Position]:
-        self._require_permission(actor, self.VIEW_PERMISSION)
-        return self.repository.list_positions()
-
-    def get_position(
-        self,
-        position_id: int,
-        actor: IAMAdministrationActor,
-    ) -> Position:
-        self._require_permission(actor, self.VIEW_PERMISSION)
-        return self._require_position(position_id)
-
-    def create(
-        self,
-        command: CreatePositionCommand,
-        actor: IAMAdministrationActor,
-    ) -> Position:
-        self._require_permission(actor, self.CREATE_PERMISSION)
-        position_code = command.position_code.strip().upper()
-        if not self.CODE_PATTERN.fullmatch(position_code):
-            raise IAMAdministrationValidationError(
-                "岗位编码须以字母开头，且只能包含大写字母、数字和下划线"
-            )
-        if self.repository.get_position_by_code(position_code) is not None:
-            raise DuplicateIAMCode(f"position already exists: {position_code}")
-        position = Position(
-            position_code=position_code,
-            position_name=self._required_name(command.position_name, "岗位名称"),
-        )
-        self.repository.add(position)
-        self.repository.flush()
-        self._audit(
-            "POSITION",
-            position.id,
-            "CREATE",
-            actor,
-            {"after": self._snapshot(position)},
-        )
-        self.repository.commit()
-        return self._reload(position.id)
-
-    def update(
-        self,
-        position_id: int,
-        command: UpdatePositionCommand,
-        actor: IAMAdministrationActor,
-    ) -> Position:
-        self._require_permission(actor, self.UPDATE_PERMISSION)
-        position = self._require_position(position_id)
-        before = self._snapshot(position)
-        position.position_name = self._required_name(
-            command.position_name,
-            "岗位名称",
-        )
-        self._audit(
-            "POSITION",
-            position.id,
-            "UPDATE",
-            actor,
-            {"before": before, "after": self._snapshot(position)},
-        )
-        self.repository.commit()
-        return self._reload(position.id)
-
-    def set_active(
-        self,
-        position_id: int,
-        is_active: bool,
-        actor: IAMAdministrationActor,
-    ) -> Position:
-        self._require_permission(actor, self.STATUS_PERMISSION)
-        position = self._require_position(position_id)
-        if position.is_active == is_active:
-            return position
-        before = position.is_active
-        position.is_active = is_active
-        self._audit(
-            "POSITION",
-            position.id,
-            "ENABLE" if is_active else "DISABLE",
-            actor,
-            {"before": {"is_active": before}, "after": {"is_active": is_active}},
-        )
-        self.repository.commit()
-        return self._reload(position.id)
-
-    def delete(
-        self,
-        position_id: int,
-        actor: IAMAdministrationActor,
-    ) -> None:
-        self._require_permission(actor, self.DELETE_PERMISSION)
-        position = self._require_position(position_id)
-        if position.membership_links:
-            raise IAMAdministrationConflict(
-                "岗位已绑定用户组织关系，只能停用，不能删除"
-            )
-        if self.workflow_references.count_position_references(
-            position.position_code
-        ):
-            raise IAMAdministrationConflict(
-                "岗位已被流程候选规则引用，只能停用，不能删除"
-            )
-        before = self._snapshot(position)
-        self.repository.delete(position)
-        self._audit("POSITION", position.id, "DELETE", actor, {"before": before})
-        self.repository.commit()
-
-    def _require_position(self, position_id: int) -> Position:
-        position = self.repository.get_position(position_id)
-        if position is None:
-            raise IAMEntityNotFound(f"position not found: {position_id}")
-        return position
-
-    def _reload(self, position_id: int) -> Position:
-        self.repository.expire_all()
-        return self._require_position(position_id)
-
-    @staticmethod
-    def _snapshot(position: Position) -> dict:
-        return {
-            "position_code": position.position_code,
-            "position_name": position.position_name,
-            "is_active": position.is_active,
-        }
 
 
 class PermissionDictionaryService(_PermissionCheckedService):

@@ -7,7 +7,7 @@
 | 审查项 | 结论与证据 |
 | --- | --- |
 | 模块边界 | Router 无 SQL/Commit；Service 编排事务；Repository 封装查询。自动扫描全部 `*router.py`。 |
-| IAM 关系模型 | User 不含组织、角色、岗位快捷外键；关系落在 UserOrganization 及关联表。 |
+| IAM 关系模型 | User 不含组织、角色快捷外键；关系落在 UserOrganization 与 UserOrganizationRole。I26 已删除重复岗位维度。 |
 | 授权 | 稳定 Permission Code + 当前活动组织 + DataScope；修改后下一请求生效。 |
 | 组织树 | `org_path` 支持子树范围与移动；循环、活动关系、业务引用有保护。 |
 | 工单状态 | 唯一状态赋值入口为 WorkOrder 领域模型调用状态机。 |

@@ -5,7 +5,6 @@ from app.auth.security import PasswordHasher
 from app.iam.models import (
     Organization,
     Permission,
-    Position,
     Role,
     RoleDataScope,
     RolePermission,
@@ -31,7 +30,6 @@ def test_seed_is_idempotent_and_creates_required_relationships(
     )
     assert db_session.scalar(select(func.count()).select_from(User)) == summary.users
     assert db_session.scalar(select(func.count()).select_from(Role)) == summary.roles
-    assert db_session.scalar(select(func.count()).select_from(Position)) == summary.positions
     assert db_session.scalar(select(func.count()).select_from(Permission)) == (
         summary.permissions
     )
@@ -56,8 +54,8 @@ def test_seed_is_idempotent_and_creates_required_relationships(
 
     manager = service.get_membership("zhangsan", "PIPE_OPERATION")
     assert manager is not None
-    assert {link.position.position_code for link in manager.position_links} == {
-        "DEPT_MANAGER"
+    assert {link.role.role_code for link in manager.role_links} == {
+        "WORKORDER_MANAGER"
     }
 
     repairer_role = service.get_role("REPAIRER")

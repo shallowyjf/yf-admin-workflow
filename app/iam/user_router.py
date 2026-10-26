@@ -74,10 +74,6 @@ def _response(user: User) -> UserResponse:
                 role_codes=sorted(
                     link.role.role_code for link in membership.role_links
                 ),
-                position_codes=sorted(
-                    link.position.position_code
-                    for link in membership.position_links
-                ),
             )
             for membership in sorted(
                 user.memberships,
@@ -240,7 +236,6 @@ def replace_user_memberships(
             is_primary=item.is_primary,
             is_active=item.is_active,
             role_codes=tuple(item.role_codes),
-            position_codes=tuple(item.position_codes),
         )
         for item in command.memberships
     )

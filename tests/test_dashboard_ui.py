@@ -57,7 +57,7 @@ def test_login_and_authentication_redirect(ui_client: TestClient) -> None:
     assert "@admin" in dashboard.text
 
 
-def test_admin_can_open_all_ten_core_views(ui_client: TestClient) -> None:
+def test_admin_can_open_all_core_views(ui_client: TestClient) -> None:
     _login(ui_client, "admin")
     paths = (
         "/login",
@@ -65,7 +65,6 @@ def test_admin_can_open_all_ten_core_views(ui_client: TestClient) -> None:
         "/iam/organizations",
         "/iam/users",
         "/iam/roles",
-        "/iam/positions",
         "/iam/permissions",
         "/workorders",
         "/tasks/mine",
@@ -120,6 +119,10 @@ def test_navigation_and_buttons_follow_effective_permissions(
 
 
 def test_ui_completes_standard_dma_work_order_flow(ui_client: TestClient) -> None:
+    regulator = _login(ui_client, "regulator")
+    regulator_org_id = next(
+        org["id"] for org in regulator["organizations"] if org["org_code"] == "REGULATOR"
+    )
     wangwu = _login(ui_client, "wangwu")
     pipe_org_id = next(
         org["id"] for org in wangwu["organizations"] if org["org_code"] == "PIPE_OPERATION"
@@ -169,12 +172,17 @@ def test_ui_completes_standard_dma_work_order_flow(ui_client: TestClient) -> Non
     assert 'data-testid="action-result"' in ui_client.get(detail_path).text
     response = ui_client.post(
         f"/ui/workorders/{work_order_id}/result",
-        data={"result": "定位漏点并完成修复", "comment": "压力恢复正常"},
+        data={
+            "result": "定位漏点并完成修复",
+            "comment": "压力恢复正常",
+            "review_org_id": str(regulator_org_id),
+        },
         follow_redirects=False,
     )
     assert response.status_code == 303
 
-    _login(ui_client, "wangwu")
+    _login(ui_client, "regulator")
+    assert f"工单 #{work_order_id}" in ui_client.get("/tasks/mine").text
     assert 'data-testid="action-review"' in ui_client.get(detail_path).text
     response = ui_client.post(
         f"/ui/workorders/{work_order_id}/review",
@@ -182,6 +190,7 @@ def test_ui_completes_standard_dma_work_order_flow(ui_client: TestClient) -> Non
         follow_redirects=False,
     )
     assert response.status_code == 303
+    _login(ui_client, "wangwu")
     assert 'data-testid="action-close"' in ui_client.get(detail_path).text
     response = ui_client.post(
         f"/ui/workorders/{work_order_id}/close",
@@ -403,9 +412,7 @@ def test_user_page_lifecycle_and_membership_configuration(
             f"active_org_{dispatch_id}": "true",
             f"active_org_{pipe_id}": "true",
             f"role_{dispatch_id}": ["DISPATCHER"],
-            f"position_{dispatch_id}": ["DISPATCHER"],
             f"role_{pipe_id}": ["REPAIRER"],
-            f"position_{pipe_id}": ["REPAIRER"],
         },
         follow_redirects=False,
     )
@@ -424,7 +431,7 @@ def test_user_page_lifecycle_and_membership_configuration(
     detail_page = ui_client.get(f"/iam/users/{user_id}")
     assert detail_page.status_code == 200
     assert 'data-testid="save-memberships"' in detail_page.text
-    assert "组织、角色与岗位" in detail_page.text
+    assert "组织与角色" in detail_page.text
     assert ui_client.post(
         f"/ui/users/{user_id}/password",
         data={"new_password": "Changed@123"},
@@ -509,36 +516,14 @@ def test_role_page_lifecycle_and_authorization_matrix(
     assert forbidden.status_code == 403
 
 
-def test_position_permission_and_audit_pages_complete_iam_configuration(
+def test_permission_and_audit_pages_complete_iam_configuration(
     ui_client: TestClient,
 ) -> None:
     _login(ui_client, "admin")
-    position_page = ui_client.get("/iam/positions")
     permission_page = ui_client.get("/iam/permissions")
     audit_page = ui_client.get("/iam/audit")
-    assert 'data-testid="create-position"' in position_page.text
     assert 'data-testid="create-permission"' in permission_page.text
     assert audit_page.status_code == 200
-
-    assert ui_client.post(
-        "/ui/positions",
-        data={"position_code": "UI_POSITION", "position_name": "页面岗位"},
-        follow_redirects=False,
-    ).status_code == 303
-    position = next(
-        item
-        for item in ui_client.get("/api/positions").json()
-        if item["position_code"] == "UI_POSITION"
-    )
-    position_detail = ui_client.get(f"/iam/positions/{position['id']}")
-    assert position_detail.status_code == 200
-    assert "挂接组织与用户" in position_detail.text
-    assert ui_client.post(
-        f"/ui/positions/{position['id']}/update",
-        data={"position_name": "页面岗位（更新）"},
-        follow_redirects=False,
-    ).status_code == 303
-    assert "页面岗位（更新）" in ui_client.get("/iam/positions").text
 
     assert ui_client.post(
         "/ui/permissions",
@@ -576,13 +561,8 @@ def test_position_permission_and_audit_pages_complete_iam_configuration(
         f"/ui/permissions/{permission['id']}/delete",
         follow_redirects=False,
     ).status_code == 303
-    assert ui_client.post(
-        f"/ui/positions/{position['id']}/delete",
-        follow_redirects=False,
-    ).status_code == 303
-
     _login(ui_client, "lisi")
-    assert ui_client.get("/iam/positions").status_code == 403
+    assert ui_client.get("/iam/positions").status_code == 404
     assert ui_client.get("/iam/permissions").status_code == 403
     assert ui_client.get("/iam/audit").status_code == 403
 

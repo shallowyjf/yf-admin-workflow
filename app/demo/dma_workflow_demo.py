@@ -60,6 +60,7 @@ def run_dma_demo(session: Session) -> DmaDemoResult:
     wangwu = _required(iam_service.get_user("wangwu"), "wangwu")
     lisi = _required(iam_service.get_user("lisi"), "lisi")
     zhaoliu = _required(iam_service.get_user("zhaoliu"), "zhaoliu")
+    regulator = _required(iam_service.get_user("regulator"), "regulator")
     dispatch_org = _required(
         iam_service.get_organization("DISPATCH_CENTER"),
         "DISPATCH_CENTER",
@@ -68,9 +69,14 @@ def run_dma_demo(session: Session) -> DmaDemoResult:
         iam_service.get_organization("PIPE_OPERATION"),
         "PIPE_OPERATION",
     )
+    regulator_org = _required(
+        iam_service.get_organization("REGULATOR"),
+        "REGULATOR",
+    )
     wangwu_actor = WorkOrderActor(wangwu.id, dispatch_org.id)
     lisi_actor = WorkOrderActor(lisi.id, pipe_org.id)
     zhaoliu_actor = WorkOrderActor(zhaoliu.id, pipe_org.id)
+    regulator_actor = WorkOrderActor(regulator.id, regulator_org.id)
 
     work_order = work_order_service.create(
         CreateWorkOrderCommand(
@@ -142,11 +148,12 @@ def run_dma_demo(session: Session) -> DmaDemoResult:
         lisi_actor,
         "已定位并修复 DMA07 漏点，压力恢复正常",
         "提交处理结果",
+        regulator_org.id,
     )
     status_path.append(work_order.status)
     work_order = work_order_service.review(
         work_order.id,
-        wangwu_actor,
+        regulator_actor,
         "APPROVE",
         "复核通过",
     )

@@ -14,15 +14,11 @@ from app.iam.admin_service import (
 from app.iam.authorization import DataScopeType, PermissionService
 from app.iam.dictionary_admin_service import (
     CreatePermissionCommand,
-    CreatePositionCommand,
     IAMAuditFilter,
     IAMAuditQueryService,
     PermissionDictionaryService,
-    PositionAdministrationService,
     UpdatePermissionCommand,
-    UpdatePositionCommand,
 )
-from app.iam.identity import IdentityQueryService
 from app.iam.repository import IAMRepository
 from app.iam.role_admin_service import (
     CreateRoleCommand,
@@ -32,14 +28,11 @@ from app.iam.role_admin_service import (
 from app.iam.seed import DEMO_INITIAL_PASSWORD, seed_iam
 from app.iam.service import IAMService
 from app.main import create_app
-from app.workflow.models import WorkflowDefinition
-from app.workflow.repository import WorkflowRepository
 
 
 def _services(
     session: Session,
 ) -> tuple[
-    PositionAdministrationService,
     PermissionDictionaryService,
     IAMAuditQueryService,
     RoleAdministrationService,
@@ -55,11 +48,6 @@ def _services(
     permissions = PermissionService(repository)
     actor = IAMAdministrationActor(admin.id, group.id)
     return (
-        PositionAdministrationService(
-            repository,
-            permissions,
-            WorkflowRepository(session),
-        ),
         PermissionDictionaryService(repository, permissions),
         IAMAuditQueryService(repository, permissions),
         RoleAdministrationService(repository, permissions),
@@ -68,80 +56,10 @@ def _services(
     )
 
 
-def test_position_lifecycle_candidate_effect_and_audit(db_session: Session) -> None:
-    positions, _, audits, _, actor, repository = _services(db_session)
-    position = positions.create(
-        CreatePositionCommand("FIELD_SUPERVISOR", "现场主管"),
-        actor,
-    )
-    position = positions.update(
-        position.id,
-        UpdatePositionCommand("现场值守主管"),
-        actor,
-    )
-    assert position.position_code == "FIELD_SUPERVISOR"
-    positions.set_active(position.id, False, actor)
-    positions.delete(position.id, actor)
-    assert repository.get_position(position.id) is None
-    logs = audits.list_logs(
-        IAMAuditFilter(entity_type="position", entity_id=position.id),
-        actor,
-    )
-    assert [log.action for log in reversed(logs)] == [
-        "CREATE",
-        "UPDATE",
-        "DISABLE",
-        "DELETE",
-    ]
-
-    repairer_position = repository.get_position_by_code("REPAIRER")
-    lisi = repository.get_user_by_username("lisi")
-    pipe = repository.get_organization_by_code("PIPE_OPERATION")
-    assert repairer_position is not None and lisi is not None and pipe is not None
-    identity = IdentityQueryService(repository)
-    assert lisi.id in identity.users_by_position("REPAIRER", pipe.id)
-    positions.set_active(repairer_position.id, False, actor)
-    assert lisi.id not in identity.users_by_position("REPAIRER", pipe.id)
-    positions.set_active(repairer_position.id, True, actor)
-
-
-def test_position_delete_protects_memberships_and_workflow_json(
-    db_session: Session,
-) -> None:
-    positions, _, _, _, actor, repository = _services(db_session)
-    repairer = repository.get_position_by_code("REPAIRER")
-    assert repairer is not None
-    with pytest.raises(IAMAdministrationConflict, match="用户组织关系"):
-        positions.delete(repairer.id, actor)
-
-    workflow_position = positions.create(
-        CreatePositionCommand("FLOW_REVIEWER", "流程复核岗位"),
-        actor,
-    )
-    workflow_repository = WorkflowRepository(db_session)
-    workflow_repository.add(
-        WorkflowDefinition(
-            code="POSITION_REFERENCE",
-            name="岗位引用测试",
-            version=1,
-            definition_json={
-                "candidate_rule": {
-                    "candidate_type": "ORG_POSITION",
-                    "position_code": "FLOW_REVIEWER",
-                }
-            },
-            is_active=True,
-        )
-    )
-    workflow_repository.commit()
-    with pytest.raises(IAMAdministrationConflict, match="流程候选规则"):
-        positions.delete(workflow_position.id, actor)
-
-
 def test_permission_lifecycle_reference_cleanup_and_builtin_protection(
     db_session: Session,
 ) -> None:
-    _, permissions, audits, roles, actor, repository = _services(db_session)
+    permissions, audits, roles, actor, repository = _services(db_session)
     permission = permissions.create(
         CreatePermissionCommand(
             "asset:view",
@@ -198,15 +116,13 @@ def test_permission_lifecycle_reference_cleanup_and_builtin_protection(
 def test_business_user_receives_only_explicitly_granted_iam_capability(
     db_session: Session,
 ) -> None:
-    positions, permissions, audits, roles, admin_actor, repository = _services(
+    permissions, audits, roles, admin_actor, repository = _services(
         db_session
     )
     lisi = repository.get_user_by_username("lisi")
     pipe = repository.get_organization_by_code("PIPE_OPERATION")
     assert lisi is not None and pipe is not None
     actor = IAMAdministrationActor(lisi.id, pipe.id)
-    with pytest.raises(IAMAdministrationPermissionDenied):
-        positions.list_positions(actor)
     with pytest.raises(IAMAdministrationPermissionDenied):
         permissions.list_permissions(actor)
     with pytest.raises(IAMAdministrationPermissionDenied):
@@ -228,8 +144,6 @@ def test_business_user_receives_only_explicitly_granted_iam_capability(
     )
     IAMService(repository).assign_role("lisi", "PIPE_OPERATION", "IAM_AUDITOR")
     assert audits.list_logs(IAMAuditFilter(), actor)
-    with pytest.raises(IAMAdministrationPermissionDenied):
-        positions.list_positions(actor)
     with pytest.raises(IAMAdministrationPermissionDenied):
         permissions.list_permissions(actor)
 
@@ -261,24 +175,6 @@ def _login(client: TestClient, username: str) -> None:
 
 def test_dictionary_and_audit_api_lifecycle(dictionary_client: TestClient) -> None:
     _login(dictionary_client, "admin")
-    position = dictionary_client.post(
-        "/api/positions",
-        json={"position_code": "API_POSITION", "position_name": "API 岗位"},
-    )
-    assert position.status_code == 201
-    position_id = position.json()["id"]
-    assert dictionary_client.put(
-        f"/api/positions/{position_id}",
-        json={"position_name": "API 岗位（更新）"},
-    ).status_code == 200
-    assert dictionary_client.post(
-        f"/api/positions/{position_id}/status",
-        json={"is_active": False},
-    ).status_code == 200
-    assert dictionary_client.delete(
-        f"/api/positions/{position_id}"
-    ).status_code == 204
-
     permission = dictionary_client.post(
         "/api/permissions",
         json={
@@ -324,16 +220,7 @@ def test_dictionary_and_audit_api_lifecycle(dictionary_client: TestClient) -> No
     assert dictionary_client.delete(
         f"/api/permissions/{builtin['id']}"
     ).status_code == 409
-    repairer = next(
-        item
-        for item in dictionary_client.get("/api/positions").json()
-        if item["position_code"] == "REPAIRER"
-    )
-    assert dictionary_client.delete(
-        f"/api/positions/{repairer['id']}"
-    ).status_code == 409
-
     _login(dictionary_client, "lisi")
-    assert dictionary_client.get("/api/positions").status_code == 403
+    assert dictionary_client.get("/api/positions").status_code == 404
     assert dictionary_client.get("/api/permissions").status_code == 403
     assert dictionary_client.get("/api/iam/audit-logs").status_code == 403

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="page-intro"><div><h2>IAM 审计</h2><p>组织、用户、角色、岗位和权限的关键写操作均可按条件追溯。</p></div></section>
+<section class="page-intro"><div><h2>IAM 审计</h2><p>组织、用户、角色和权限的关键写操作均可按条件追溯。</p></div></section>
 <section class="panel">
   <form method="get" action="/iam/audit" class="filters audit-filters">
     <label>实体类型<input name="entity_type" value="{{ audit_filters.entity_type or '' }}" placeholder="例如 ROLE"></label>

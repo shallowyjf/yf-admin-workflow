@@ -100,7 +100,6 @@ def test_workflow_candidates_are_intersected_with_project_members(
         )
         session.commit()
     database.dispose()
-
     profile = _login(client, "wangwu")
     pipe_org_id = next(
         item["id"] for item in profile["organizations"] if item["org_code"] == "PIPE_OPERATION"
@@ -143,6 +142,59 @@ def test_workflow_candidates_are_intersected_with_project_members(
             profile["active_project_id"],
         )
     database.dispose()
+
+
+def test_review_task_moves_to_project_reviewer_and_reject_returns_to_handler(
+    i22_environment: tuple[TestClient, str],
+) -> None:
+    client, _ = i22_environment
+    regulator = _login(client, "regulator")
+    regulator_org_id = regulator["active_org_id"]
+    wangwu = _login(client, "wangwu")
+    pipe_org_id = next(
+        item["id"]
+        for item in wangwu["organizations"]
+        if item["org_code"] == "PIPE_OPERATION"
+    )
+    created = client.post(
+        "/api/workorders", json={"title": "监管复核组织联动", "type": "REPAIR"}
+    ).json()
+    assert client.post(
+        f"/api/workorders/{created['id']}/submit", json={}
+    ).status_code == 200
+    assert client.post(
+        f"/api/workorders/{created['id']}/dispatch",
+        json={"target_org_id": pipe_org_id},
+    ).status_code == 200
+
+    _login(client, "lisi")
+    assert client.post(
+        f"/api/workorders/{created['id']}/claim", json={}
+    ).status_code == 200
+    result = client.post(
+        f"/api/workorders/{created['id']}/result",
+        json={"result": "处理完成，提交监管复核"},
+    )
+    assert result.status_code == 200
+    assert result.json()["status"] == "PENDING_REVIEW"
+    assert result.json()["current_org_id"] == regulator_org_id
+
+    _login(client, "regulator")
+    tasks = client.get("/api/tasks/mine").json()
+    review_task = next(
+        item
+        for item in tasks
+        if item["business_id"] == created["id"] and item["task_type"] == "REVIEW"
+    )
+    assert review_task["is_candidate"] is True
+    assert client.get(f"/api/workorders/{created['id']}").status_code == 200
+    rejected = client.post(
+        f"/api/workorders/{created['id']}/review",
+        json={"decision": "REJECT", "comment": "补充现场照片"},
+    )
+    assert rejected.status_code == 200
+    assert rejected.json()["status"] == "PROCESSING"
+    assert rejected.json()["current_org_id"] == pipe_org_id
 
 
 def test_archived_project_is_read_only_for_existing_work_orders(

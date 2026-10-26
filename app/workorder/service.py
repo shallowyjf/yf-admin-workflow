@@ -366,6 +366,7 @@ class WorkOrderService:
         actor: WorkOrderActor,
         result: str,
         comment: str | None = None,
+        review_org_id: int | None = None,
     ) -> WorkOrder:
         self._require_permission(actor, "workorder:handle")
         normalized_result = result.strip()
@@ -373,8 +374,16 @@ class WorkOrderService:
             raise WorkOrderValidationError("result must not be blank")
         work_order = self._get(work_order_id)
         self._require_project_access(actor, "workorder:handle", work_order)
-        from_status, to_status = work_order.submit_result()
-        payload = {"result": normalized_result}
+        resolved_review_org_id = self._resolve_review_org_id(
+            work_order, review_org_id
+        )
+        handler_org_id = work_order.current_org_id
+        from_status, to_status = work_order.submit_result(resolved_review_org_id)
+        payload = {
+            "result": normalized_result,
+            "handler_org_id": handler_org_id,
+            "review_org_id": resolved_review_org_id,
+        }
         self._record_action(
             work_order,
             WorkOrderActionType.SUBMIT_RESULT,
@@ -390,7 +399,7 @@ class WorkOrderService:
             self.workflow_actions.submit_workorder_result(
                 work_order.id,
                 actor.user_id,
-                work_order.owner_org_id,
+                resolved_review_org_id,
                 payload,
             )
         self.repository.refresh(work_order)
@@ -613,7 +622,9 @@ class WorkOrderService:
             from_status, to_status = work_order.approve(self.clock())
             action_type = WorkOrderActionType.APPROVE
         elif normalized_decision == WorkOrderActionType.REJECT.value:
-            from_status, to_status = work_order.reject()
+            from_status, to_status = work_order.reject(
+                self._last_handler_org_id(work_order.id)
+            )
             action_type = WorkOrderActionType.REJECT
         else:
             raise WorkOrderValidationError(
@@ -639,6 +650,48 @@ class WorkOrderService:
             )
         self.repository.refresh(work_order)
         return work_order
+
+    def review_organizations(self, work_order: WorkOrder) -> list | None:
+        if self.project_service is None:
+            return None
+        return self.project_service.operational_role_organizations(
+            work_order.project_id,
+            "REVIEWER",
+            "workorder:review",
+        )
+
+    def _resolve_review_org_id(
+        self, work_order: WorkOrder, requested_org_id: int | None
+    ) -> int:
+        organizations = self.review_organizations(work_order)
+        if organizations is None:
+            return requested_org_id or work_order.owner_org_id
+        eligible_ids = {organization.id for organization in organizations}
+        if requested_org_id is not None:
+            if requested_org_id not in eligible_ids:
+                raise WorkOrderValidationError(
+                    "review organization has no active reviewer in the current project"
+                )
+            return requested_org_id
+        if len(eligible_ids) == 1:
+            return next(iter(eligible_ids))
+        if not eligible_ids:
+            raise WorkOrderValidationError(
+                "current project has no active review organization"
+            )
+        raise WorkOrderValidationError(
+            "review_org_id is required when multiple review organizations are eligible"
+        )
+
+    def _last_handler_org_id(self, work_order_id: int) -> int:
+        for action in reversed(self.repository.list_actions(work_order_id)):
+            if action.action_type != WorkOrderActionType.SUBMIT_RESULT.value:
+                continue
+            payload = action.payload_json or {}
+            handler_org_id = payload.get("handler_org_id")
+            if isinstance(handler_org_id, int) and handler_org_id > 0:
+                return handler_org_id
+        raise WorkOrderValidationError("handler organization history is missing")
 
     def close(
         self,

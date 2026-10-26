@@ -211,7 +211,6 @@ def test_iam_paging_export_and_row_level_import_report(
                             "org_code": "I18_TEAM",
                             "is_primary": True,
                             "role_codes": ["I18_OPERATOR"],
-                            "position_codes": [],
                         }
                     ],
                 }

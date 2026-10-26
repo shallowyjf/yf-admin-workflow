@@ -9,13 +9,11 @@ from .authorization import DataScopeType
 from .models import (
     Organization,
     Permission,
-    Position,
     Role,
     RoleDataScope,
     RolePermission,
     User,
     UserOrganization,
-    UserOrganizationPosition,
     UserOrganizationRole,
 )
 from .repository import IAMRepository
@@ -119,13 +117,6 @@ class IAMService:
             Role(role_code=role_code, role_name=role_name, role_type=role_type)
         )
 
-    def create_position(self, position_code: str, position_name: str) -> Position:
-        if self.repository.get_position_by_code(position_code):
-            raise DuplicateIAMCode(f"position already exists: {position_code}")
-        return self._save(
-            Position(position_code=position_code, position_name=position_name)
-        )
-
     def create_permission(
         self,
         permission_code: str,
@@ -173,23 +164,6 @@ class IAMService:
                 f"role assignment already exists: {username}/{org_code}/{role_code}"
             )
         return self._save(UserOrganizationRole(user_org_id=membership.id, role_id=role.id))
-
-    def assign_position(
-        self, username: str, org_code: str, position_code: str
-    ) -> UserOrganizationPosition:
-        membership = self._require_membership(username, org_code)
-        position = self._require_position(position_code)
-        if self.repository.get_position_link(membership.id, position.id):
-            raise DuplicateIAMRelation(
-                "position assignment already exists: "
-                f"{username}/{org_code}/{position_code}"
-            )
-        return self._save(
-            UserOrganizationPosition(
-                user_org_id=membership.id,
-                position_id=position.id,
-            )
-        )
 
     def grant_permission(
         self,
@@ -263,9 +237,6 @@ class IAMService:
     def list_roles(self) -> list[Role]:
         return self.repository.list_roles()
 
-    def list_positions(self) -> list[Position]:
-        return self.repository.list_positions()
-
     def list_permissions(self) -> list[Permission]:
         return self.repository.list_permissions()
 
@@ -280,9 +251,6 @@ class IAMService:
 
     def get_role(self, role_code: str) -> Role | None:
         return self.repository.get_role_by_code(role_code)
-
-    def get_position(self, position_code: str) -> Position | None:
-        return self.repository.get_position_by_code(position_code)
 
     def get_permission(self, permission_code: str) -> Permission | None:
         return self.repository.get_permission_by_code(permission_code)
@@ -313,12 +281,6 @@ class IAMService:
         if role is None:
             raise IAMEntityNotFound(f"role not found: {role_code}")
         return role
-
-    def _require_position(self, position_code: str) -> Position:
-        position = self.get_position(position_code)
-        if position is None:
-            raise IAMEntityNotFound(f"position not found: {position_code}")
-        return position
 
     def _require_permission(self, permission_code: str) -> Permission:
         permission = self.get_permission(permission_code)

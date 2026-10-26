@@ -253,6 +253,7 @@ def submit_work_order_result(
             _actor(context),
             command.result,
             command.comment,
+            command.review_org_id,
         )
     except (WorkOrderError, WorkflowError) as error:
         _raise_http(error)

@@ -85,7 +85,7 @@
         <a class="organization-member" href="/iam/users/{{ membership.user.id }}">
           <span class="avatar">{{ membership.user.display_name[:1] }}</span>
           <span><strong>{{ membership.user.display_name }}</strong><small>@{{ membership.user.username }}{% if membership.is_primary %} · 主组织{% endif %}</small></span>
-          <span>{% for link in membership.role_links %}<i>{{ link.role.role_name }}</i>{% endfor %}{% for link in membership.position_links %}<i>{{ link.position.position_name }}</i>{% endfor %}</span>
+          <span>{% for link in membership.role_links %}<i>{{ link.role.role_name }}</i>{% else %}<i>未配置角色</i>{% endfor %}</span>
         </a>
         {% else %}<div class="empty">该组织暂无直属成员</div>{% endfor %}
       </div>

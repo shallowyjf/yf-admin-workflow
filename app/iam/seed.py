@@ -115,19 +115,6 @@ ROLES = (
     ("DATA_STEWARD", "采集处理数据专员"),
     ("MODEL_ANALYST", "模型分析人员"),
 )
-POSITIONS = (
-    ("TENANT_LEADER", "甲方负责人"),
-    ("DEPT_MANAGER", "施工项目经理"),
-    ("SUPERVISOR", "监管人员"),
-    ("DISPATCHER", "项目调度员"),
-    ("REPAIRER", "现场施工人员"),
-    ("PLATFORM_ENGINEER", "平台运维工程师"),
-    ("BUSINESS_DIRECTOR", "业务方向负责人"),
-    ("SYSTEM_OWNER", "业务系统负责人"),
-    ("OWNER_PROJECT_MANAGER", "甲方项目经理"),
-    ("SUPERVISOR_ENGINEER", "监理工程师"),
-    ("DELIVERY_ENGINEER", "软件交付工程师"),
-)
 DEMO_INITIAL_PASSWORD = "Demo@123456"
 ROLE_POLICIES = {
     "SYSTEM_ADMIN": (
@@ -347,7 +334,6 @@ class SeedSummary:
     organizations: int = len(ORGANIZATIONS)
     users: int = len(USERS)
     roles: int = len(ROLES)
-    positions: int = len(POSITIONS)
     permissions: int = len(PERMISSIONS)
     role_permissions: int = sum(
         len(permission_codes) for permission_codes, _ in ROLE_POLICIES.values()
@@ -417,103 +403,86 @@ def seed_iam(
         if service.get_role(code) is None:
             service.create_role(code, name, "SYSTEM" if code == "SYSTEM_ADMIN" else "BUSINESS")
 
-    for code, name in POSITIONS:
-        if service.get_position(code) is None:
-            service.create_position(code, name)
-
     for code, name, resource_type in PERMISSIONS:
         if service.get_permission(code) is None:
             service.create_permission(code, name, resource_type)
 
     assignments = (
-        ("admin", "GROUP", ("SYSTEM_ADMIN",), ()),
-        ("admin", "PLATFORM", (), ()),
-        ("owner_leader", "GROUP", ("OWNER_LEADER",), ("TENANT_LEADER",)),
-        ("wangwu", "DISPATCH_CENTER", ("DISPATCHER", "REVIEWER"), ("DISPATCHER",)),
-        ("regulator", "REGULATOR", ("REVIEWER",), ("SUPERVISOR",)),
-        ("zhangsan", "PIPE_OPERATION", ("WORKORDER_MANAGER",), ("DEPT_MANAGER",)),
-        ("lisi", "PIPE_OPERATION", ("REPAIRER",), ("REPAIRER",)),
-        ("zhaoliu", "PIPE_OPERATION", ("REPAIRER",), ("REPAIRER",)),
+        ("admin", "GROUP", ("SYSTEM_ADMIN",)),
+        ("admin", "PLATFORM", ()),
+        ("owner_leader", "GROUP", ("OWNER_LEADER",)),
+        ("wangwu", "DISPATCH_CENTER", ("DISPATCHER", "REVIEWER")),
+        ("regulator", "REGULATOR", ("REVIEWER",)),
+        ("zhangsan", "PIPE_OPERATION", ("WORKORDER_MANAGER",)),
+        ("lisi", "PIPE_OPERATION", ("REPAIRER",)),
+        ("zhaoliu", "PIPE_OPERATION", ("REPAIRER",)),
         (
             "platform_ops",
             "PLATFORM",
             ("PLATFORM_OPERATOR",),
-            ("PLATFORM_ENGINEER",),
         ),
         (
             "water_drainage_leader",
             "OWNER_WATER",
             ("BUSINESS_LEADER",),
-            ("BUSINESS_DIRECTOR",),
         ),
         (
             "water_manager",
             "OWNER_WATER",
             ("BUSINESS_LEADER",),
-            ("BUSINESS_DIRECTOR",),
         ),
         (
             "drainage_manager",
             "OWNER_DRAINAGE",
             ("BUSINESS_LEADER",),
-            ("BUSINESS_DIRECTOR",),
         ),
         (
             "gas_manager",
             "OWNER_GAS",
             ("BUSINESS_LEADER",),
-            ("BUSINESS_DIRECTOR",),
         ),
         (
             "heating_manager",
             "OWNER_HEATING",
             ("BUSINESS_LEADER",),
-            ("BUSINESS_DIRECTOR",),
         ),
         (
             "road_manager",
             "OWNER_ROAD",
             ("BUSINESS_LEADER",),
-            ("BUSINESS_DIRECTOR",),
         ),
         (
             "water_drainage_leader",
             "OWNER_DRAINAGE",
             ("BUSINESS_LEADER",),
-            ("BUSINESS_DIRECTOR",),
         ),
         (
             "dma_specialist",
             "OWNER_WATER",
             ("SYSTEM_SPECIALIST",),
-            ("SYSTEM_OWNER",),
         ),
         (
             "hydraulic_specialist",
             "OWNER_WATER",
             ("SYSTEM_SPECIALIST",),
-            ("SYSTEM_OWNER",),
         ),
         (
             "owner_pm",
             "OWNER_WATER",
-            ("OWNER_PROJECT_MANAGER",),
             ("OWNER_PROJECT_MANAGER",),
         ),
         (
             "supervisor_engineer",
             "WATER_SUPERVISION",
             ("SUPERVISOR_ENGINEER",),
-            ("SUPERVISOR_ENGINEER",),
         ),
         (
             "software_delivery",
             "PLATFORM_DELIVERY",
             ("SOFTWARE_DELIVERY",),
-            ("DELIVERY_ENGINEER",),
         ),
     )
-    for username, org_code, role_codes, position_codes in assignments:
+    for username, org_code, role_codes in assignments:
         membership = service.get_membership(username, org_code)
         if membership is None:
             secondary_memberships = {
@@ -529,14 +498,6 @@ def seed_iam(
         for role_code in role_codes:
             if role_code not in current_roles:
                 service.assign_role(username, org_code, role_code)
-        membership = service.get_membership(username, org_code)
-        assert membership is not None
-        current_positions = {
-            link.position.position_code for link in membership.position_links
-        }
-        for position_code in position_codes:
-            if position_code not in current_positions:
-                service.assign_position(username, org_code, position_code)
 
     if service.get_membership("wangwu", "PIPE_OPERATION") is None:
         service.add_user_to_organization("wangwu", "PIPE_OPERATION")
@@ -588,7 +549,7 @@ def main() -> None:
             f"{len(summaries)} city tenants, "
             f"{sum(item.organizations for item in summaries)} organizations, "
             f"{sum(item.users for item in summaries)} users, "
-            f"{summary.roles} roles/tenant, {summary.positions} positions/tenant, "
+            f"{summary.roles} roles/tenant, "
             f"{summary.permissions} permissions"
         )
     finally:

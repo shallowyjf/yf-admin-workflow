@@ -21,9 +21,6 @@ class IdentityQueryService:
     def users_by_organization(self, org_id: int) -> set[int]:
         return self.repository.list_active_user_ids_by_organization(org_id)
 
-    def users_by_position(self, position_code: str, org_id: int) -> set[int]:
-        return self.repository.list_active_user_ids_by_position(position_code, org_id)
-
     def descendant_org_ids(self, org_id: int) -> set[int]:
         return self.repository.list_active_descendant_org_ids(org_id)
 

@@ -67,6 +67,8 @@ def _matching_task(client: TestClient, work_order_id: int) -> dict:
 def test_standard_dma_api_e2e_has_exact_candidates_and_timeline(
     dma_client: TestClient,
 ) -> None:
+    regulator_profile = _login(dma_client, "regulator")
+    regulator_org_id = _org_id(regulator_profile, "REGULATOR")
     wangwu_profile = _login(dma_client, "wangwu")
     pipe_org_id = _org_id(wangwu_profile, "PIPE_OPERATION")
     created_response = dma_client.post(
@@ -138,18 +140,24 @@ def test_standard_dma_api_e2e_has_exact_candidates_and_timeline(
         json={
             "result": "已定位并修复 DMA07 漏点，压力恢复正常",
             "comment": "提交处理结果",
+            "review_org_id": regulator_org_id,
         },
     )
     assert result.status_code == 200
     assert result.json()["status"] == "PENDING_REVIEW"
 
-    _login(dma_client, "wangwu")
+    _login(dma_client, "regulator")
+    review_task = dma_client.get("/api/tasks/mine").json()
+    assert len(review_task) == 1
+    assert review_task[0]["business_id"] == work_order_id
+    assert review_task[0]["task_type"] == "REVIEW"
     approved = dma_client.post(
         f"/api/workorders/{work_order_id}/review",
         json={"decision": "APPROVE", "comment": "复核通过"},
     )
     assert approved.status_code == 200
     assert approved.json()["status"] == "COMPLETED"
+    _login(dma_client, "wangwu")
     closed = dma_client.post(
         f"/api/workorders/{work_order_id}/close",
         json={"comment": "DMA07 异常闭环"},

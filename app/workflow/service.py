@@ -490,7 +490,6 @@ class WorkflowService:
             "user_id",
             "org_id",
             "role_code",
-            "position_code",
         ):
             value = getattr(candidate_rule, field_name)
             if value is not None:

@@ -39,11 +39,6 @@ def main() -> None:
                     org_id=pipe_org_id,
                     role_code="REPAIRER",
                 ),
-                CandidateRule(
-                    CandidateType.ORG_POSITION,
-                    org_id=pipe_org_id,
-                    position_code="DEPT_MANAGER",
-                ),
             )
             output = []
             for rule in scenarios:

@@ -23,9 +23,7 @@ from app.iam.admin_service import IAMAdministrationActor
 from app.iam.authorization import DataScopeType, PermissionService
 from app.iam.dictionary_admin_service import (
     CreatePermissionCommand,
-    CreatePositionCommand,
     PermissionDictionaryService,
-    PositionAdministrationService,
 )
 from app.iam.repository import IAMRepository
 from app.iam.role_admin_service import (
@@ -109,14 +107,6 @@ def run_release_smoke(database_url: str) -> ReleaseSmokeResult:
             actor = IAMAdministrationActor(admin.id, group.id)
             permission_service = PermissionService(repository)
 
-            position = PositionAdministrationService(
-                repository,
-                permission_service,
-                workflow_repository,
-            ).create(
-                CreatePositionCommand("V01_ACCEPTANCE", "V0.1 验收岗"),
-                actor,
-            )
             permission = PermissionDictionaryService(
                 repository,
                 permission_service,
@@ -165,7 +155,6 @@ def run_release_smoke(database_url: str) -> ReleaseSmokeResult:
                         org_code="PIPE_OPERATION",
                         is_primary=True,
                         role_codes=(role.role_code,),
-                        position_codes=(position.position_code,),
                     ),
                 ),
                 actor,

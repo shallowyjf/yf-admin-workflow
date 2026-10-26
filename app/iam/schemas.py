@@ -67,7 +67,6 @@ class MembershipConfigurationRequest(BaseModel):
     is_primary: bool = False
     is_active: bool = True
     role_codes: list[str] = Field(default_factory=list)
-    position_codes: list[str] = Field(default_factory=list)
 
 
 class ReplaceUserMembershipsRequest(BaseModel):
@@ -82,7 +81,6 @@ class UserMembershipResponse(BaseModel):
     is_primary: bool
     is_active: bool
     role_codes: list[str]
-    position_codes: list[str]
 
 
 class UserResponse(BaseModel):
@@ -136,27 +134,6 @@ class RoleResponse(BaseModel):
     role_type: str | None
     is_active: bool
     authorization: list[RolePermissionScopeResponse]
-
-
-class CreatePositionRequest(BaseModel):
-    position_code: str = Field(min_length=2, max_length=80)
-    position_name: str = Field(min_length=1, max_length=120)
-
-
-class UpdatePositionRequest(BaseModel):
-    position_name: str = Field(min_length=1, max_length=120)
-
-
-class PositionStatusRequest(BaseModel):
-    is_active: bool
-
-
-class PositionResponse(BaseModel):
-    id: int
-    position_code: str
-    position_name: str
-    is_active: bool
-    membership_count: int
 
 
 class CreatePermissionRequest(BaseModel):

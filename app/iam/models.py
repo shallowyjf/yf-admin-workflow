@@ -1,6 +1,7 @@
 """IAM and authorization persistence models.
 
-Roles and positions deliberately bind to UserOrganization rather than User.
+Roles deliberately bind to UserOrganization rather than User so one user can
+carry different responsibilities in different organizations.
 """
 
 from __future__ import annotations
@@ -238,38 +239,6 @@ class RoleDataScope(IdTimestampMixin, Base):
     role: Mapped[Role] = relationship(back_populates="data_scopes")
 
 
-class Position(IdTimestampMixin, Base):
-    __tablename__ = "sys_position"
-    __table_args__ = (
-        UniqueConstraint(
-            "tenant_id",
-            "position_code",
-            name="uq_sys_position_tenant_code",
-        ),
-        Index("ix_sys_position_tenant_id", "tenant_id"),
-    )
-
-    tenant_id: Mapped[int] = mapped_column(
-        ForeignKey("sys_tenant.id", ondelete="RESTRICT"),
-        nullable=False,
-        default=1,
-        server_default=text("1"),
-    )
-    position_code: Mapped[str] = mapped_column(String(80), nullable=False)
-    position_name: Mapped[str] = mapped_column(String(120), nullable=False)
-    is_active: Mapped[bool] = mapped_column(
-        Boolean,
-        nullable=False,
-        default=True,
-        server_default=text("1"),
-    )
-
-    membership_links: Mapped[list[UserOrganizationPosition]] = relationship(
-        back_populates="position"
-    )
-    tenant: Mapped[Tenant] = relationship()
-
-
 class UserOrganization(IdTimestampMixin, Base):
     __tablename__ = "sys_user_org"
     __table_args__ = (
@@ -305,10 +274,6 @@ class UserOrganization(IdTimestampMixin, Base):
         back_populates="membership",
         cascade="all, delete-orphan",
     )
-    position_links: Mapped[list[UserOrganizationPosition]] = relationship(
-        back_populates="membership",
-        cascade="all, delete-orphan",
-    )
 
 
 class UserOrganizationRole(IdTimestampMixin, Base):
@@ -333,29 +298,3 @@ class UserOrganizationRole(IdTimestampMixin, Base):
 
     membership: Mapped[UserOrganization] = relationship(back_populates="role_links")
     role: Mapped[Role] = relationship(back_populates="membership_links")
-
-
-class UserOrganizationPosition(IdTimestampMixin, Base):
-    __tablename__ = "sys_user_org_position"
-    __table_args__ = (
-        UniqueConstraint(
-            "user_org_id",
-            "position_id",
-            name="uq_sys_user_org_position_membership_position",
-        ),
-        Index("ix_sys_user_org_position_position_id", "position_id"),
-    )
-
-    user_org_id: Mapped[int] = mapped_column(
-        ForeignKey("sys_user_org.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    position_id: Mapped[int] = mapped_column(
-        ForeignKey("sys_position.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-
-    membership: Mapped[UserOrganization] = relationship(
-        back_populates="position_links"
-    )
-    position: Mapped[Position] = relationship(back_populates="membership_links")

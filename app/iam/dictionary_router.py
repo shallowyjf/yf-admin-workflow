@@ -1,4 +1,4 @@
-"""Position, permission dictionary, and IAM audit HTTP endpoints."""
+"""Permission dictionary and IAM audit HTTP endpoints."""
 
 from typing import Annotated
 
@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 from app.auth.router import get_request_context
 from app.auth.service import RequestContext
 from app.db.dependencies import get_db_session
-from app.workflow.repository import WorkflowRepository
 
 from .admin_service import (
     IAMAdministrationActor,
@@ -19,41 +18,22 @@ from .admin_service import (
 from .authorization import PermissionService
 from .dictionary_admin_service import (
     CreatePermissionCommand,
-    CreatePositionCommand,
     IAMAuditFilter,
     IAMAuditQueryService,
     PermissionDictionaryService,
-    PositionAdministrationService,
     UpdatePermissionCommand,
-    UpdatePositionCommand,
 )
-from .models import IAMAuditLog, Permission, Position
+from .models import IAMAuditLog, Permission
 from .repository import IAMRepository
 from .schemas import (
     CreatePermissionRequest,
-    CreatePositionRequest,
     IAMAuditLogResponse,
     PermissionResponse,
-    PositionResponse,
-    PositionStatusRequest,
     UpdatePermissionRequest,
-    UpdatePositionRequest,
 )
 from .service import DuplicateIAMCode, IAMEntityNotFound
 
 router = APIRouter(tags=["iam-dictionaries"])
-
-
-def get_position_administration_service(
-    session: Annotated[Session, Depends(get_db_session)],
-    context: Annotated[RequestContext, Depends(get_request_context)],
-) -> PositionAdministrationService:
-    repository = IAMRepository(session, context.tenant_id)
-    return PositionAdministrationService(
-        repository,
-        PermissionService(repository),
-        WorkflowRepository(session),
-    )
 
 
 def get_permission_dictionary_service(
@@ -74,16 +54,6 @@ def get_iam_audit_query_service(
 
 def _actor(context: RequestContext) -> IAMAdministrationActor:
     return IAMAdministrationActor(context.current_user_id, context.active_org_id)
-
-
-def _position_response(position: Position) -> PositionResponse:
-    return PositionResponse(
-        id=position.id,
-        position_code=position.position_code,
-        position_name=position.position_name,
-        is_active=position.is_active,
-        membership_count=len(position.membership_links),
-    )
 
 
 def _permission_response(permission: Permission) -> PermissionResponse:
@@ -121,139 +91,6 @@ def _raise_http(error: Exception) -> None:
     else:
         status_code = status.HTTP_409_CONFLICT
     raise HTTPException(status_code=status_code, detail=str(error)) from error
-
-
-@router.get("/api/positions", response_model=list[PositionResponse])
-def list_positions(
-    context: Annotated[RequestContext, Depends(get_request_context)],
-    service: Annotated[
-        PositionAdministrationService,
-        Depends(get_position_administration_service),
-    ],
-) -> list[PositionResponse]:
-    try:
-        positions = service.list_positions(_actor(context))
-    except IAMAdministrationPermissionDenied as error:
-        _raise_http(error)
-    return [_position_response(position) for position in positions]
-
-
-@router.get("/api/positions/{position_id}", response_model=PositionResponse)
-def get_position(
-    position_id: int,
-    context: Annotated[RequestContext, Depends(get_request_context)],
-    service: Annotated[
-        PositionAdministrationService,
-        Depends(get_position_administration_service),
-    ],
-) -> PositionResponse:
-    try:
-        position = service.get_position(position_id, _actor(context))
-    except (IAMAdministrationPermissionDenied, IAMEntityNotFound) as error:
-        _raise_http(error)
-    return _position_response(position)
-
-
-@router.post(
-    "/api/positions",
-    response_model=PositionResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-def create_position(
-    command: CreatePositionRequest,
-    context: Annotated[RequestContext, Depends(get_request_context)],
-    service: Annotated[
-        PositionAdministrationService,
-        Depends(get_position_administration_service),
-    ],
-) -> PositionResponse:
-    try:
-        position = service.create(
-            CreatePositionCommand(**command.model_dump()),
-            _actor(context),
-        )
-    except (
-        DuplicateIAMCode,
-        IAMAdministrationPermissionDenied,
-        IAMAdministrationValidationError,
-    ) as error:
-        _raise_http(error)
-    return _position_response(position)
-
-
-@router.put("/api/positions/{position_id}", response_model=PositionResponse)
-def update_position(
-    position_id: int,
-    command: UpdatePositionRequest,
-    context: Annotated[RequestContext, Depends(get_request_context)],
-    service: Annotated[
-        PositionAdministrationService,
-        Depends(get_position_administration_service),
-    ],
-) -> PositionResponse:
-    try:
-        position = service.update(
-            position_id,
-            UpdatePositionCommand(**command.model_dump()),
-            _actor(context),
-        )
-    except (
-        IAMAdministrationPermissionDenied,
-        IAMAdministrationValidationError,
-        IAMEntityNotFound,
-    ) as error:
-        _raise_http(error)
-    return _position_response(position)
-
-
-@router.post(
-    "/api/positions/{position_id}/status",
-    response_model=PositionResponse,
-)
-def set_position_status(
-    position_id: int,
-    command: PositionStatusRequest,
-    context: Annotated[RequestContext, Depends(get_request_context)],
-    service: Annotated[
-        PositionAdministrationService,
-        Depends(get_position_administration_service),
-    ],
-) -> PositionResponse:
-    try:
-        position = service.set_active(
-            position_id,
-            command.is_active,
-            _actor(context),
-        )
-    except (
-        IAMAdministrationPermissionDenied,
-        IAMEntityNotFound,
-    ) as error:
-        _raise_http(error)
-    return _position_response(position)
-
-
-@router.delete(
-    "/api/positions/{position_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-def delete_position(
-    position_id: int,
-    context: Annotated[RequestContext, Depends(get_request_context)],
-    service: Annotated[
-        PositionAdministrationService,
-        Depends(get_position_administration_service),
-    ],
-) -> Response:
-    try:
-        service.delete(position_id, _actor(context))
-    except (
-        IAMAdministrationConflict,
-        IAMAdministrationPermissionDenied,
-        IAMEntityNotFound,
-    ) as error:
-        _raise_http(error)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/api/permissions", response_model=list[PermissionResponse])

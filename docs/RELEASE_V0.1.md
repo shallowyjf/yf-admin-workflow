@@ -3,7 +3,7 @@
 ## 发布基线
 
 - Python 3.12、FastAPI、SQLAlchemy 2、Alembic、SQLite。
-- 版本 `0.1.0`，当前增量迭代 `I25`。
+- 版本 `0.1.0`，当前增量迭代 `I26`。
 - 本地演示账号初始密码均为 `Demo@123456`，禁止复用于任何真实环境。
 
 ## 从空目录数据库启动
@@ -27,11 +27,11 @@ Copy-Item .env.example .env
 
 ## 人工验收清单
 
-1. 打开 `/health`，确认 `status=ok`、`database=ok`、`iteration=I25`。
+1. 打开 `/health`，确认 `status=ok`、`database=ok`、`iteration=I26`。
 2. 在统一登录中心使用 `admin` 和初始密码登录，确认 `/auth/me` 返回江城市租户，且 IAM 页面只展示当前租户数据。
 3. 打开 `/portal`，确认五类业务方向、六个业务系统、六个工程项目和对应驾驶舱入口完整显示。
 4. 切换活动生命线系统和工程项目，确认只能选择账号已授权入口和已参加项目；使用管理员完成项目新增、编辑、参与组织和成员角色配置。
-3. 用 `admin` 创建临时岗位和自定义 Permission；创建角色并配置 Permission + ORG DataScope；创建用户并绑定 PIPE_OPERATION、角色和岗位。
+3. 用 `admin` 创建自定义 Permission；创建角色并配置 Permission + ORG DataScope；创建用户并绑定 PIPE_OPERATION 和组织内角色。
 4. 切换到新用户，确认只显示被授权导航，直接调用未授权 API 返回 403；停用成员/角色/用户后权限立即失效。
 5. 用 `wangwu` 创建并提交 DMA 工单，派给 PIPE_OPERATION；用 `lisi` 认领并提交结果；再用 `wangwu` 复核通过并关闭。
 6. 用 `zhaoliu` 竞争认领同一任务，确认被拒绝；检查工单时间线包含七个标准动作。

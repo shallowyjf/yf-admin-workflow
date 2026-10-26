@@ -122,8 +122,11 @@ class WorkOrder(IdTimestampMixin, Base):
         if self.response_due_at is not None and occurred_at > self.response_due_at:
             self.sla_status = "RESPONSE_BREACHED"
 
-    def submit_result(self) -> tuple[str, str]:
-        return self._transition(WorkOrderActionType.SUBMIT_RESULT)
+    def submit_result(self, review_org_id: int | None = None) -> tuple[str, str]:
+        transition = self._transition(WorkOrderActionType.SUBMIT_RESULT)
+        if review_org_id is not None:
+            self.current_org_id = review_org_id
+        return transition
 
     def transfer(self, target_user_id: int) -> int:
         if (
@@ -139,8 +142,11 @@ class WorkOrder(IdTimestampMixin, Base):
         self.current_assignee_id = target_user_id
         return previous_assignee_id
 
-    def reject(self) -> tuple[str, str]:
-        return self._transition(WorkOrderActionType.REJECT)
+    def reject(self, handler_org_id: int | None = None) -> tuple[str, str]:
+        transition = self._transition(WorkOrderActionType.REJECT)
+        if handler_org_id is not None:
+            self.current_org_id = handler_org_id
+        return transition
 
     def approve(self, occurred_at: datetime) -> tuple[str, str]:
         transition = self._transition(WorkOrderActionType.APPROVE)

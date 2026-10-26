@@ -45,6 +45,7 @@ class TransferWorkOrderRequest(BaseModel):
 class SubmitResultRequest(BaseModel):
     result: str = Field(min_length=1, max_length=4000)
     comment: str | None = Field(default=None, max_length=1000)
+    review_org_id: int | None = Field(default=None, gt=0)
 
 
 class ReviewWorkOrderRequest(BaseModel):

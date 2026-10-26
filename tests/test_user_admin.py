@@ -48,7 +48,7 @@ def _service(
     )
 
 
-def test_user_memberships_keep_roles_and_positions_organization_scoped(
+def test_user_memberships_keep_roles_organization_scoped(
     db_session: Session,
 ) -> None:
     service, actor, repository = _service(db_session)
@@ -63,13 +63,11 @@ def test_user_memberships_keep_roles_and_positions_organization_scoped(
                 "DISPATCH_CENTER",
                 True,
                 role_codes=("DISPATCHER",),
-                position_codes=("DISPATCHER",),
             ),
             MembershipConfiguration(
                 "PIPE_OPERATION",
                 False,
                 role_codes=("REPAIRER",),
-                position_codes=("REPAIRER",),
             ),
         ),
         actor,
@@ -243,13 +241,11 @@ def test_user_api_lifecycle_active_org_and_session_revocation(
                     "org_code": "DISPATCH_CENTER",
                     "is_primary": True,
                     "role_codes": ["DISPATCHER"],
-                    "position_codes": ["DISPATCHER"],
                 },
                 {
                     "org_code": "PIPE_OPERATION",
                     "is_primary": False,
                     "role_codes": ["REPAIRER"],
-                    "position_codes": ["REPAIRER"],
                 },
             ]
         },
@@ -273,13 +269,11 @@ def test_user_api_lifecycle_active_org_and_session_revocation(
                     "org_code": "DISPATCH_CENTER",
                     "is_primary": True,
                     "role_codes": ["DISPATCHER"],
-                    "position_codes": ["DISPATCHER"],
                 },
                 {
                     "org_code": "PIPE_OPERATION",
                     "is_primary": False,
                     "role_codes": ["REPAIRER"],
-                    "position_codes": ["REPAIRER"],
                 },
             ]
         },

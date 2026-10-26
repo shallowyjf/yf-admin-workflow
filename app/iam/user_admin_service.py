@@ -19,11 +19,9 @@ from .authorization import PermissionService
 from .models import (
     IAMAuditLog,
     Organization,
-    Position,
     Role,
     User,
     UserOrganization,
-    UserOrganizationPosition,
     UserOrganizationRole,
 )
 from .repository import IAMRepository
@@ -55,7 +53,6 @@ class MembershipConfiguration:
     is_primary: bool
     is_active: bool = True
     role_codes: tuple[str, ...] = ()
-    position_codes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -63,7 +60,6 @@ class _ResolvedMembership:
     command: MembershipConfiguration
     organization: Organization
     roles: tuple[Role, ...]
-    positions: tuple[Position, ...]
 
 
 class UserAdministrationService:
@@ -242,7 +238,6 @@ class UserAdministrationService:
             membership.is_primary = item.command.is_primary
             membership.is_active = item.command.is_active
             self._replace_roles(membership, item.roles)
-            self._replace_positions(membership, item.positions)
         self.repository.flush()
         self.repository.expire_all()
         refreshed = self._require_user(user.id)
@@ -284,9 +279,8 @@ class UserAdministrationService:
                     f"不能启用已停用组织的成员关系: {org_code}"
                 )
             roles = self._resolve_roles(command.role_codes)
-            positions = self._resolve_positions(command.position_codes)
             resolved.append(
-                _ResolvedMembership(command, organization, roles, positions)
+                _ResolvedMembership(command, organization, roles)
             )
         return tuple(resolved)
 
@@ -306,27 +300,6 @@ class UserAdministrationService:
             roles.append(role)
         return tuple(roles)
 
-    def _resolve_positions(
-        self,
-        position_codes: tuple[str, ...],
-    ) -> tuple[Position, ...]:
-        normalized = tuple(
-            code.strip().upper() for code in position_codes if code.strip()
-        )
-        if len(set(normalized)) != len(normalized):
-            raise IAMAdministrationValidationError("同一组织内岗位不能重复")
-        positions = []
-        for position_code in normalized:
-            position = self.repository.get_position_by_code(position_code)
-            if position is None:
-                raise IAMEntityNotFound(f"position not found: {position_code}")
-            if not position.is_active:
-                raise IAMAdministrationValidationError(
-                    f"不能绑定已停用岗位: {position_code}"
-                )
-            positions.append(position)
-        return tuple(positions)
-
     def _replace_roles(
         self,
         membership: UserOrganization,
@@ -343,25 +316,6 @@ class UserAdministrationService:
                     UserOrganizationRole(
                         user_org_id=membership.id,
                         role_id=role.id,
-                    )
-                )
-
-    def _replace_positions(
-        self,
-        membership: UserOrganization,
-        positions: tuple[Position, ...],
-    ) -> None:
-        target_ids = {position.id for position in positions}
-        current_ids = {link.position_id for link in membership.position_links}
-        for link in list(membership.position_links):
-            if link.position_id not in target_ids:
-                self.repository.delete(link)
-        for position in positions:
-            if position.id not in current_ids:
-                self.repository.add(
-                    UserOrganizationPosition(
-                        user_org_id=membership.id,
-                        position_id=position.id,
                     )
                 )
 
@@ -441,10 +395,6 @@ class UserAdministrationService:
                     "is_active": membership.is_active,
                     "role_codes": sorted(
                         link.role.role_code for link in membership.role_links
-                    ),
-                    "position_codes": sorted(
-                        link.position.position_code
-                        for link in membership.position_links
                     ),
                 }
                 for membership in user.memberships
